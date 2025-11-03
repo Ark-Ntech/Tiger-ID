@@ -35,9 +35,9 @@ A comprehensive multi-agent investigative platform for detecting tiger trafficki
 
 **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + Redux Toolkit  
 **Backend:** FastAPI + PostgreSQL + pgvector + Redis  
-**Real-time:** WebSocket communication  
-**AI/ML:** PyTorch + Transformers + MegaDetector + Custom Siamese Networks  
-**Orchestration:** LangGraph + AutoGen + MCP
+**Real-time:** WebSocket + Server-Sent Events (SSE)  
+**AI/ML:** PyTorch + Transformers + OmniVinci + MegaDetector + Custom Siamese Networks  
+**Orchestration:** LangGraph (optional) + AutoGen + MCP (Model Context Protocol)
 
 ---
 
@@ -178,8 +178,8 @@ cd frontend && npm run test
 
 ## 📊 Project Stats
 
-- **Frontend:** 50+ TypeScript files, 14 pages, 30+ components
-- **Backend:** 100+ Python files, 18 API routes, 43 services
+- **Frontend:** 50+ TypeScript files, 13 pages, 30+ components
+- **Backend:** 100+ Python files, 16 API route modules, 32+ services
 - **Tests:** Comprehensive test suite with 90%+ coverage
 - **Docker:** 3 compose files for different environments
 - **Documentation:** 20+ guides covering all aspects

@@ -118,16 +118,22 @@ graph TB
 - CORS middleware
 - Comprehensive error handling
 
-**API Router Structure:**
+**API Router Structure (16 route modules):**
 - `/api/auth` - Authentication endpoints
-- `/api/v1` - Core API endpoints
-- `/api/v1/investigations` - Investigation management
+- `/api/v1` - Core API endpoints  
+- `/api/v1/investigations` - Investigation management and tools
 - `/api/v1/search` - Global search
 - `/api/v1/analytics` - Analytics endpoints
 - `/api/v1/export` - Export functionality
 - `/api/v1/audit` - Audit log endpoints (admin only)
 - `/api/v1/notifications` - Notification endpoints
-- `/api/events` - Event streaming (SSE)
+- `/api/v1/events` - Event history endpoints
+- `/api/v1/sse` - Server-Sent Events for real-time updates
+- `/api/v1/websocket` - WebSocket for real-time communication
+- `/api/v1/verification` - Verification task endpoints
+- `/api/v1/annotations` - Annotation endpoints
+- `/api/v1/templates` - Template management
+- `/api/v1/saved-searches` - Saved search management
 - `/api/integrations` - External API integrations
 
 ### 3. Multi-Agent Orchestration System
