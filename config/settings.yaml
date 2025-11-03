@@ -1,0 +1,133 @@
+app:
+  name: "Tiger Trafficking Investigation System"
+  version: "1.0.0"
+  environment: ${APP_ENV:-development}
+  debug: ${DEBUG:-false}
+  secret_key: ${SECRET_KEY}
+  
+database:
+  url: ${DATABASE_URL}
+  pool_size: 10
+  max_overflow: 20
+  echo: ${DEBUG:-false}
+
+redis:
+  url: ${REDIS_URL}
+  decode_responses: true
+
+celery:
+  broker_url: ${CELERY_BROKER_URL}
+  result_backend: ${CELERY_RESULT_BACKEND}
+  task_serializer: json
+  result_serializer: json
+  accept_content: [json]
+  timezone: UTC
+  enable_utc: true
+
+storage:
+  type: ${STORAGE_TYPE:-local}  # local, s3, minio
+  local_path: ${STORAGE_PATH:-./data/storage}
+  s3_bucket: ${S3_BUCKET}
+  s3_region: ${S3_REGION}
+  
+authentication:
+  jwt_secret_key: ${JWT_SECRET_KEY}
+  jwt_algorithm: ${JWT_ALGORITHM:-HS256}
+  jwt_expiration_hours: ${JWT_EXPIRATION_HOURS:-24}
+  mfa_enabled: ${MFA_ENABLED:-false}
+  password_min_length: 8
+  
+omnivinci:
+  api_key: ${OMNIVINCI_API_KEY}
+  api_url: ${OMNIVINCI_API_URL:-https://api.nvidia.com/v1/models/omnivinci}
+  model_version: ${OMNIVINCI_MODEL_VERSION:-latest}
+  max_tokens: 4096
+  temperature: 0.7
+  # Local model configuration (model weights need to be downloaded from HuggingFace)
+  # Run: huggingface-cli download nvidia/omnivinci --local-dir ./data/models/omnivinci/omnivinci --local-dir-use-symlinks False
+  use_local_model: ${OMNIVINCI_USE_LOCAL:-false}
+  local_model_path: ${OMNIVINCI_MODEL_PATH:-./data/models/omnivinci/omnivinci}
+  torch_dtype: ${OMNIVINCI_TORCH_DTYPE:-torch.float16}
+  device_map: ${OMNIVINCI_DEVICE_MAP:-auto}
+  num_video_frames: ${OMNIVINCI_NUM_VIDEO_FRAMES:-128}
+  load_audio_in_video: ${OMNIVINCI_LOAD_AUDIO:-true}
+  audio_length: ${OMNIVINCI_AUDIO_LENGTH:-max_3600}
+  
+firecrawl:
+  api_key: ${FIRECRAWL_API_KEY}
+  timeout: 30
+  
+models:
+  detection:
+    path: ${MEGADETECTOR_MODEL_PATH:-./data/models/md_v5a.0.0.pt}
+    version: ${MEGADETECTOR_VERSION:-v5}
+    confidence_threshold: 0.5
+    nms_threshold: 0.45
+    enabled: true
+  reid:
+    path: ${REID_MODEL_PATH:-./data/models/tiger_reid_model.pth}
+    similarity_threshold: 0.8
+    embedding_dim: 512
+  rapid:
+    path: ${RAPID_MODEL_PATH:-./data/models/rapid/checkpoints/model.pth}
+    similarity_threshold: 0.8
+    enabled: ${RAPID_ENABLED:-false}
+  wildlife_tools:
+    path: ${WILDLIFETOOLS_MODEL_PATH:-./data/models/wildlife-tools/}
+    model_type: ${WILDLIFETOOLS_MODEL_TYPE:-megadescriptor}
+    similarity_threshold: 0.8
+    enabled: ${WILDLIFETOOLS_ENABLED:-false}
+  cvwc2019:
+    path: ${CVWC2019_MODEL_PATH:-./data/models/cvwc2019/checkpoints/model.pth}
+    similarity_threshold: 0.8
+    enabled: ${CVWC2019_ENABLED:-false}
+  pose:
+    path: ${POSE_MODEL_PATH:-./data/models/tiger_pose_model.pth}
+    enabled: true
+  device: ${MODEL_DEVICE:-cuda}
+  batch_size: ${BATCH_SIZE:-32}
+  
+datasets:
+  atrw:
+    path: ${ATRW_DATASET_PATH:-./data/models/atrw/}
+  metawild:
+    path: ${METAWILD_DATASET_PATH:-./data/datasets/metawild/}
+  wildlife_datasets:
+    path: ${WILDLIFE_DATASETS_PATH:-./data/datasets/wildlife-datasets/}
+  individual_animal_reid:
+    path: ${INDIVIDUAL_ANIMAL_REID_PATH:-./data/datasets/individual-animal-reid/}
+  
+monitoring:
+  prometheus_enabled: ${PROMETHEUS_ENABLED:-true}
+  prometheus_port: ${PROMETHEUS_PORT:-9090}
+  log_level: ${LOG_LEVEL:-INFO}
+
+langgraph:
+  enabled: ${USE_LANGGRAPH:-false}
+  checkpoint: memory
+  thread_id_prefix: investigation_
+  
+external_apis:
+  usda:
+    api_key: ${USDA_API_KEY}
+    enabled: false
+  cites:
+    api_key: ${CITES_API_KEY}
+    enabled: false
+  usfws:
+    api_key: ${USFWS_API_KEY}
+    enabled: false
+  youtube:
+    api_key: ${YOUTUBE_API_KEY}
+    enabled: false
+    base_url: https://www.googleapis.com/youtube/v3
+    timeout: 30
+  meta:
+    access_token: ${META_ACCESS_TOKEN}
+    app_id: ${META_APP_ID}
+    app_secret: ${META_APP_SECRET}
+    enabled: false
+    base_url: https://graph.facebook.com/v19.0
+    timeout: 30
+    api_version: v19.0
+

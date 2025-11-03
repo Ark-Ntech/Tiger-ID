@@ -1,0 +1,28 @@
+[theme]
+# Base theme - light mode
+base = "light"
+
+# Primary color - Forest Green for buttons, links, interactive elements
+primaryColor = "#228B22"
+
+# Background color - White
+backgroundColor = "#FFFFFF"
+
+# Secondary background color - Light Silver for widgets and containers
+secondaryBackgroundColor = "#F5F5F5"
+
+# Text color - Black
+textColor = "#000000"
+
+# Font
+font = "sans serif"
+
+[server]
+# Enable CORS for development
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+# Gather usage stats
+gatherUsageStats = false
+

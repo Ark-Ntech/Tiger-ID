@@ -1,0 +1,53 @@
+detection:
+  model_name: "MegaDetector_v5"
+  source: "huggingface"
+  input_size: [640, 640]
+  confidence_threshold: 0.5
+  nms_threshold: 0.45
+  device: "cuda"
+  batch_size: 16
+  
+reid:
+  model_name: "Tiger_Stripe_ReID"
+  architecture: "Siamese_ResNet50"  # or Vision_Transformer
+  input_size: [224, 224]
+  embedding_dim: 512
+  similarity_threshold: 0.8
+  device: "cuda"
+  batch_size: 32
+  data_augmentation:
+    horizontal_flip: true  # For left/right flank support
+    rotation_range: 15
+    brightness_range: 0.2
+    contrast_range: 0.2
+  training:
+    dataset: "ATRW"
+    learning_rate: 0.001
+    batch_size: 64
+    epochs: 100
+    loss_function: "triplet_loss"
+    margin: 1.0
+    
+pose:
+  model_name: "Tiger_Pose_Estimation"
+  architecture: "HRNet"  # or ResNet_pose
+  num_keypoints: 17
+  input_size: [256, 256]
+  device: "cuda"
+  enabled: true  # Optional component
+  
+training:
+  datasets:
+    - name: "ATRW"
+      source: "https://ar5iv.labs.arxiv.org/html/1906.05586"
+      size: 92  # tigers
+      annotations: true
+      format: "coco"
+  augmentation:
+    horizontal_flip: true
+    rotation: true
+    brightness: true
+    contrast: true
+  validation_split: 0.2
+  test_split: 0.1
+
