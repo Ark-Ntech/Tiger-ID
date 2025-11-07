@@ -110,12 +110,12 @@ class GlobalSearchService:
         
         return [
             {
+                "id": str(inv.investigation_id),
                 "entity_type": "investigation",
-                "entity_id": str(inv.investigation_id),
                 "title": inv.title,
                 "description": inv.description or "",
-                "status": inv.status,
-                "priority": inv.priority,
+                "status": inv.status.value if hasattr(inv.status, 'value') else inv.status,
+                "priority": inv.priority.value if hasattr(inv.priority, 'value') else inv.priority,
                 "created_at": inv.created_at.isoformat() if inv.created_at else None,
                 "match_score": 1.0  # Could implement scoring
             }
@@ -148,10 +148,12 @@ class GlobalSearchService:
         
         return [
             {
+                "id": str(ev.evidence_id),
                 "entity_type": "evidence",
-                "entity_id": str(ev.evidence_id),
                 "investigation_id": str(ev.investigation_id) if ev.investigation_id else None,
-                "source_type": ev.source_type,
+                "title": (ev.extracted_text or "")[:100],
+                "description": (ev.extracted_text or "")[:200],
+                "source_type": ev.source_type.value if hasattr(ev.source_type, 'value') else ev.source_type,
                 "source_url": ev.source_url or "",
                 "extracted_text": (ev.extracted_text or "")[:200],
                 "relevance_score": ev.relevance_score or 0.0,
@@ -188,9 +190,10 @@ class GlobalSearchService:
         
         return [
             {
+                "id": str(f.facility_id),
                 "entity_type": "facility",
-                "entity_id": str(f.facility_id),
                 "name": f.exhibitor_name,
+                "exhibitor_name": f.exhibitor_name,
                 "city": f.city or "",
                 "state": f.state or "",
                 "usda_license": f.usda_license or "",
@@ -229,11 +232,12 @@ class GlobalSearchService:
         
         return [
             {
+                "id": str(t.tiger_id) if hasattr(t, 'tiger_id') else str(t.id),
                 "entity_type": "tiger",
-                "entity_id": str(t.tiger_id) if hasattr(t, 'tiger_id') else str(t.id),
                 "name": t.name if hasattr(t, 'name') else None,
-                "facility_id": str(t.facility_id) if hasattr(t, 'facility_id') else None,
+                "facility_id": str(t.facility_id) if hasattr(t, 'facility_id') and t.facility_id else None,
                 "status": t.status if hasattr(t, 'status') else None,
+                "images": [],  # Will be populated by relationship if needed
                 "match_score": 1.0
             }
             for t in tigers
@@ -269,8 +273,8 @@ class GlobalSearchService:
         
         return [
             {
+                "id": str(step.step_id),
                 "entity_type": "step",
-                "entity_id": str(step.step_id),
                 "investigation_id": str(step.investigation_id),
                 "step_type": step.step_type,
                 "agent_name": step.agent_name or "",

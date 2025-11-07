@@ -2,42 +2,47 @@ import { useState } from 'react'
 import Card from '../common/Card'
 import Button from '../common/Button'
 import FileUploader from '../common/FileUploader'
+import Alert from '../common/Alert'
+import { useImportFacilitiesExcelMutation } from '../../app/api'
 import { DocumentArrowUpIcon } from '@heroicons/react/24/outline'
 
 const ReferenceDataTab = () => {
   const [createVerifications, setCreateVerifications] = useState(true)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>(
-    'idle'
-  )
   const [uploadMessage, setUploadMessage] = useState('')
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [importFacilities, { isLoading: isImporting }] = useImportFacilitiesExcelMutation()
 
   const handleFileChange = (file: File | null) => {
     setUploadedFile(file)
-    setUploadStatus('idle')
     setUploadMessage('')
+    setUploadStatus('idle')
   }
 
   const handleImport = async () => {
     if (!uploadedFile) {
-      setUploadMessage('Please upload a reference facility file')
+      setUploadMessage('Please select a file to upload')
       setUploadStatus('error')
       return
     }
 
-    setUploadStatus('uploading')
-    setUploadMessage('Importing reference facilities...')
-
     try {
-      // TODO: Implement actual file upload endpoint
-      // For now, this is a placeholder
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      setUploadStatus('success')
-      setUploadMessage('✅ Reference facilities imported successfully!')
-    } catch (err) {
-      setUploadStatus('error')
-      setUploadMessage('Import failed. Please try again.')
+      const result = await importFacilities({
+        file: uploadedFile,
+        update_existing: true,
+      }).unwrap()
+
+      if (result.success && result.data) {
+        const { message, stats } = result.data
+        setUploadMessage(message || `Successfully imported ${stats.created} facilities, updated ${stats.updated}`)
+        setUploadStatus('success')
+        setUploadedFile(null) // Clear file after successful upload
+      }
+    } catch (err: any) {
       console.error('Import error:', err)
+      const errorMsg = err?.data?.detail || err?.message || 'Failed to import facilities. Please try again.'
+      setUploadMessage(errorMsg)
+      setUploadStatus('error')
     }
   }
 
@@ -80,24 +85,19 @@ const ReferenceDataTab = () => {
 
           <Button
             onClick={handleImport}
-            disabled={!uploadedFile || uploadStatus === 'uploading'}
+            disabled={!uploadedFile || isImporting}
             className="w-full"
           >
-            {uploadStatus === 'uploading' ? 'Importing...' : '📥 Import Reference Data'}
+            {isImporting ? 'Importing...' : '📥 Import Reference Data'}
           </Button>
 
           {uploadMessage && (
-            <div
-              className={`p-3 rounded-lg text-sm ${
-                uploadStatus === 'success'
-                  ? 'bg-green-50 text-green-700'
-                  : uploadStatus === 'error'
-                  ? 'bg-red-50 text-red-700'
-                  : 'bg-blue-50 text-blue-700'
-              }`}
+            <Alert 
+              type={uploadStatus === 'success' ? 'success' : uploadStatus === 'error' ? 'error' : 'info'} 
+              className="mt-4"
             >
               {uploadMessage}
-            </div>
+            </Alert>
           )}
         </div>
       </Card>

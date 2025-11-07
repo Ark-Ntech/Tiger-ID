@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { PaperAirplaneIcon } from '@heroicons/react/24/outline'
+import { PaperAirplaneIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline'
 import Button from '../common/Button'
 import Card from '../common/Card'
+import Badge from '../common/Badge'
 import { useWebSocket } from '../../hooks/useWebSocket'
+import { useGetMCPToolsQuery } from '../../app/api'
 
 interface Message {
   id: string
@@ -20,7 +22,21 @@ const ChatInterface = ({ investigationId }: ChatInterfaceProps) => {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set())
+  const [showToolSelector, setShowToolSelector] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  
+  const { data: mcpToolsData, isLoading: toolsLoading } = useGetMCPToolsQuery()
+  
+  const mcpServers = mcpToolsData?.data?.servers || {}
+  const allTools: Array<{ name: string; description: string; server?: string }> = []
+  Object.values(mcpServers).forEach((server: any) => {
+    if (server.tools) {
+      server.tools.forEach((tool: any) => {
+        allTools.push({ ...tool, server: server.name })
+      })
+    }
+  })
 
   const { send, isConnected } = useWebSocket({
     onMessage: (message) => {
@@ -58,19 +74,94 @@ const ChatInterface = ({ investigationId }: ChatInterfaceProps) => {
       type: 'chat_message',
       investigation_id: investigationId,
       content: input,
+      selected_tools: selectedTools.size > 0 ? Array.from(selectedTools) : undefined,
     })
 
     setInput('')
     setIsTyping(true)
   }
 
+  const toggleTool = (toolName: string) => {
+    setSelectedTools(prev => {
+      const next = new Set(prev)
+      if (next.has(toolName)) {
+        next.delete(toolName)
+      } else {
+        next.add(toolName)
+      }
+      return next
+    })
+  }
+
   return (
     <Card className="h-full flex flex-col">
       <div className="border-b pb-4 mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">AI Assistant</h3>
-        <p className="text-sm text-gray-500">
-          {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">AI Assistant</h3>
+            <p className="text-sm text-gray-500">
+              {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowToolSelector(!showToolSelector)}
+          >
+            <WrenchScrewdriverIcon className="h-4 w-4 mr-1" />
+            Tools ({selectedTools.size})
+          </Button>
+        </div>
+        
+        {showToolSelector && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-semibold text-gray-900 mb-3">Available Tools</h4>
+            {toolsLoading ? (
+              <p className="text-sm text-gray-500">Loading tools...</p>
+            ) : allTools.length > 0 ? (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {allTools.map((tool) => (
+                  <label
+                    key={`${tool.server}-${tool.name}`}
+                    className="flex items-start space-x-2 p-2 hover:bg-gray-100 rounded cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedTools.has(tool.name)}
+                      onChange={() => toggleTool(tool.name)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-medium text-gray-900">{tool.name}</span>
+                        {tool.server && (
+                          <Badge variant="info" className="text-xs">
+                            {tool.server}
+                          </Badge>
+                        )}
+                      </div>
+                      {tool.description && (
+                        <p className="text-xs text-gray-600 mt-1">{tool.description}</p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No tools available</p>
+            )}
+          </div>
+        )}
+        
+        {selectedTools.size > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {Array.from(selectedTools).map((toolName) => (
+              <Badge key={toolName} variant="info" className="text-xs">
+                {toolName}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Messages */}

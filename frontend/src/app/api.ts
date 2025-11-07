@@ -22,7 +22,6 @@ import type {
   LeadGenerationResponse,
   RelationshipAnalysisRequest,
   RelationshipAnalysisResponse,
-  NetworkGraphResponse,
   EvidenceCompilationRequest,
   EvidenceCompilationResponse,
   EvidenceGroupsResponse,
@@ -53,7 +52,11 @@ import type {
   InvestigationEventsResponse,
 } from '../types'
 
-const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// In development, use Vite proxy (empty baseUrl uses relative paths which go through proxy)
+// In production, use VITE_API_URL environment variable
+const baseUrl = import.meta.env.PROD 
+  ? (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+  : '' // Empty string in dev mode uses Vite proxy
 
 export const api = createApi({
   reducerPath: 'api',
@@ -206,6 +209,57 @@ export const api = createApi({
       invalidatesTags: ['Tiger'],
     }),
 
+    identifyTigersBatch: builder.mutation<ApiResponse<any>, FormData>({
+      query: (data) => ({
+        url: '/api/v1/tigers/identify/batch',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['Tiger'],
+    }),
+
+    getAvailableModels: builder.query<ApiResponse<{ models: string[]; default: string }>, void>({
+      query: () => '/api/v1/tigers/models',
+      providesTags: ['Tiger'],
+    }),
+
+    // Model testing endpoints
+    testModel: builder.mutation<ApiResponse<any>, FormData>({
+      query: (data) => ({
+        url: '/api/v1/models/test',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    evaluateModel: builder.mutation<ApiResponse<any>, FormData>({
+      query: (data) => ({
+        url: '/api/v1/models/evaluate',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    compareModels: builder.mutation<ApiResponse<any>, FormData>({
+      query: (data) => ({
+        url: '/api/v1/models/compare',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    benchmarkModel: builder.mutation<ApiResponse<any>, FormData>({
+      query: (data) => ({
+        url: '/api/v1/models/benchmark',
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    getModelsAvailable: builder.query<ApiResponse<{ models: Record<string, any>; default: string }>, void>({
+      query: () => '/api/v1/models/available',
+    }),
+
     // Facility endpoints
     getFacilities: builder.query<
       ApiResponse<PaginatedResponse<Facility>>,
@@ -221,6 +275,23 @@ export const api = createApi({
     getFacility: builder.query<ApiResponse<Facility>, string>({
       query: (id) => `/api/v1/facilities/${id}`,
       providesTags: (_result, _error, id) => [{ type: 'Facility', id }],
+    }),
+
+    importFacilitiesExcel: builder.mutation<
+      ApiResponse<{ message: string; stats: { created: number; updated: number; skipped: number; errors: any[] } }>,
+      { file: File; update_existing?: boolean }
+    >({
+      query: ({ file, update_existing = true }) => {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('update_existing', update_existing.toString())
+        return {
+          url: '/api/v1/facilities/import-excel',
+          method: 'POST',
+          body: formData,
+        }
+      },
+      invalidatesTags: ['Facility'],
     }),
 
     // Template endpoints
@@ -353,20 +424,6 @@ export const api = createApi({
         body: data,
       }),
       invalidatesTags: ['Investigation'],
-    }),
-
-    getNetworkGraph: builder.query<
-      ApiResponse<NetworkGraphResponse>,
-      { facility_ids?: string[]; include_reference?: boolean }
-    >({
-      query: (params) => ({
-        url: '/api/v1/investigations/network-graph',
-        params: {
-          facility_ids: params.facility_ids?.join(','),
-          include_reference: params.include_reference,
-        },
-      }),
-      providesTags: ['Investigation'],
     }),
 
     compileEvidence: builder.mutation<
@@ -692,10 +749,19 @@ export const {
   useGetTigersQuery,
   useGetTigerQuery,
   useIdentifyTigerMutation,
+  useIdentifyTigersBatchMutation,
+  useGetAvailableModelsQuery,
+  useTestModelMutation,
+  useEvaluateModelMutation,
+  useCompareModelsMutation,
+  useBenchmarkModelMutation,
+  useGetModelsAvailableQuery,
   useGetFacilitiesQuery,
   useGetFacilityQuery,
+  useImportFacilitiesExcelMutation,
   useGetTemplatesQuery,
   useCreateTemplateMutation,
+  useApplyTemplateMutation,
   useGetSavedSearchesQuery,
   useCreateSavedSearchMutation,
   useGetVerificationTasksQuery,
@@ -708,7 +774,6 @@ export const {
   useNewsSearchMutation,
   useGenerateLeadsMutation,
   useRelationshipAnalysisMutation,
-  useGetNetworkGraphQuery,
   useCompileEvidenceMutation,
   useGetEvidenceGroupsQuery,
   useScheduleCrawlMutation,

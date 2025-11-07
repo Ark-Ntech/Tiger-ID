@@ -9,7 +9,7 @@ class SuccessResponse(BaseModel):
     """Standard success response"""
 
     success: bool = True
-    message: str
+    message: Optional[str] = "Success"
     data: Optional[Any] = None
 
 

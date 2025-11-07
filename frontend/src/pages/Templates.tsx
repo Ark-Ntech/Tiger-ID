@@ -1,11 +1,19 @@
-import { useGetTemplatesQuery } from '../app/api'
+import { useState } from 'react'
+import { useGetTemplatesQuery, useApplyTemplateMutation } from '../app/api'
+import { useNavigate } from 'react-router-dom'
 import Card from '../components/common/Card'
 import Button from '../components/common/Button'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import Alert from '../components/common/Alert'
+import CreateTemplateDialog from '../components/templates/CreateTemplateDialog'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
 
 const Templates = () => {
-  const { data, isLoading } = useGetTemplatesQuery()
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const { data, isLoading, refetch } = useGetTemplatesQuery()
+  const [applyTemplate, { isLoading: isApplying }] = useApplyTemplateMutation()
 
   if (isLoading) {
     return (
@@ -26,10 +34,7 @@ const Templates = () => {
         </div>
         <Button 
           variant="primary"
-          onClick={() => {
-            // TODO: Implement template creation dialog
-            alert('Template creation feature coming soon!')
-          }}
+          onClick={() => setIsCreateDialogOpen(true)}
         >
           Create Template
         </Button>
@@ -47,12 +52,30 @@ const Templates = () => {
                   variant="outline" 
                   className="w-full" 
                   size="sm"
-                  onClick={() => {
-                    // TODO: Implement template application
-                    alert(`Template "${template.name}" application feature coming soon!`)
+                  onClick={async () => {
+                    try {
+                      // Create a new investigation first, then apply template
+                      // For now, prompt for investigation ID or create new
+                      const investigationId = prompt('Enter Investigation ID to apply template to (or leave blank to create new):')
+                      
+                      if (investigationId) {
+                        await applyTemplate({
+                          template_id: template.template_id || template.id,
+                          investigation_id: investigationId,
+                        }).unwrap()
+                        alert(`Template "${template.name}" applied successfully!`)
+                        navigate(`/investigations/${investigationId}`)
+                      } else {
+                        // Navigate to launch investigation with template pre-selected
+                        navigate('/investigations/launch', { state: { templateId: template.template_id || template.id } })
+                      }
+                    } catch (err: any) {
+                      alert(`Failed to apply template: ${err?.data?.detail || err?.message || 'Unknown error'}`)
+                    }
                   }}
+                  disabled={isApplying}
                 >
-                  Use Template
+                  {isApplying ? 'Applying...' : 'Use Template'}
                 </Button>
               </div>
             </Card>
@@ -64,6 +87,14 @@ const Templates = () => {
           <p className="text-gray-600">No templates available</p>
         </Card>
       )}
+
+      <CreateTemplateDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onSuccess={() => {
+          refetch()
+        }}
+      />
     </div>
   )
 }

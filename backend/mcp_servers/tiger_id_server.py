@@ -36,7 +36,7 @@ class TigerIDMCPServer(MCPServerBase):
         self.tools = {
             "identify_tiger": MCPTool(
                 name="identify_tiger",
-                description="Identify a tiger from an image",
+                description="Identify a tiger from an image using RE-ID models. Detects tigers in the image, extracts embeddings, and matches against known tigers in the database. Returns identification results with confidence scores.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -50,8 +50,13 @@ class TigerIDMCPServer(MCPServerBase):
                         },
                         "similarity_threshold": {
                             "type": "number",
-                            "description": "Minimum similarity for match",
+                            "description": "Minimum similarity for match (0.0-1.0)",
                             "default": 0.8
+                        },
+                        "model_name": {
+                            "type": "string",
+                            "description": "RE-ID model to use (tiger_reid, wildlife_tools, rapid, cvwc2019)",
+                            "default": "tiger_reid"
                         }
                     }
                 },
@@ -59,7 +64,7 @@ class TigerIDMCPServer(MCPServerBase):
             ),
             "generate_embedding": MCPTool(
                 name="generate_embedding",
-                description="Generate embedding vector for a tiger image",
+                description="Generate embedding vector for a tiger image using RE-ID models. This creates a feature vector that can be used for matching tigers across different images. Useful for comparing tigers or adding new tigers to the database.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -70,6 +75,11 @@ class TigerIDMCPServer(MCPServerBase):
                         "image_path": {
                             "type": "string",
                             "description": "Path to image file (alternative to image_data)"
+                        },
+                        "model_name": {
+                            "type": "string",
+                            "description": "RE-ID model to use (tiger_reid, wildlife_tools, rapid, cvwc2019)",
+                            "default": "tiger_reid"
                         }
                     },
                     "anyOf": [
@@ -81,7 +91,7 @@ class TigerIDMCPServer(MCPServerBase):
             ),
             "detect_tiger": MCPTool(
                 name="detect_tiger",
-                description="Detect tigers in an image using MegaDetector",
+                description="Detect tigers in an image using MegaDetector. Returns bounding boxes and confidence scores for all detected tigers. This is the first step before tiger identification.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -148,10 +158,14 @@ class TigerIDMCPServer(MCPServerBase):
         self,
         image_data: Optional[str] = None,
         image_path: Optional[str] = None,
-        similarity_threshold: float = 0.8
+        similarity_threshold: float = 0.8,
+        model_name: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Handle tiger identification"""
+        """Handle tiger identification with optional model selection"""
         try:
+            from backend.database import get_db_session
+            from backend.services.tiger_service import TigerService
+            
             image_bytes = await self._decode_image(image_data, image_path)
             
             # Detect tiger
@@ -174,40 +188,68 @@ class TigerIDMCPServer(MCPServerBase):
                     "confidence": 0.0
                 }
             
-            # Generate embedding
-            embedding = await self.reid_model.generate_embedding(tiger_crop)
+            # Use specified model or default
+            if model_name:
+                session = next(get_db_session())
+                try:
+                    tiger_service = TigerService(session)
+                    reid_model = tiger_service._get_model(model_name)
+                    await reid_model.load_model()
+                    embedding = await reid_model.generate_embedding_from_bytes(tiger_crop)
+                finally:
+                    session.close()
+            else:
+                # Use default model
+                embedding = await self.reid_model.generate_embedding_from_bytes(tiger_crop)
             
             return {
                 "identified": True,
                 "embedding": embedding.tolist(),
                 "confidence": detection_result["detections"][0].get("confidence", 0.0),
                 "bbox": detection_result["detections"][0].get("bbox"),
-                "detection_count": len(detection_result.get("detections", []))
+                "detection_count": len(detection_result.get("detections", [])),
+                "model_used": model_name or "tiger_reid"
             }
         except Exception as e:
-            logger.error("Tiger identification failed", error=str(e))
+            logger.error("Tiger identification failed", error=str(e), exc_info=True)
             return {"error": str(e), "identified": False}
     
     async def _handle_generate_embedding(
         self,
         image_data: Optional[str] = None,
-        image_path: Optional[str] = None
+        image_path: Optional[str] = None,
+        model_name: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Handle embedding generation"""
+        """Handle embedding generation with optional model selection"""
         try:
+            from backend.database import get_db_session
+            from backend.services.tiger_service import TigerService
+            
             image_bytes = await self._decode_image(image_data, image_path)
             image = Image.open(io.BytesIO(image_bytes))
             
-            # Generate embedding
-            embedding = await self.reid_model.generate_embedding(image)
+            # Use specified model or default
+            if model_name:
+                session = next(get_db_session())
+                try:
+                    tiger_service = TigerService(session)
+                    reid_model = tiger_service._get_model(model_name)
+                    await reid_model.load_model()
+                    embedding = await reid_model.generate_embedding(image)
+                finally:
+                    session.close()
+            else:
+                # Use default model
+                embedding = await self.reid_model.generate_embedding(image)
             
             return {
                 "embedding": embedding.tolist(),
                 "embedding_dim": len(embedding),
+                "model_used": model_name or "tiger_reid",
                 "success": True
             }
         except Exception as e:
-            logger.error("Embedding generation failed", error=str(e))
+            logger.error("Embedding generation failed", error=str(e), exc_info=True)
             return {"error": str(e), "success": False}
     
     async def _handle_detect_tiger(

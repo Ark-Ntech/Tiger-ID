@@ -25,9 +25,9 @@ const Header = () => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    if (searchQuery.trim()) {
-      // Implement global search
-      console.log('Search:', searchQuery)
+    if (searchQuery.trim() && searchQuery.trim().length >= 2) {
+      // Navigate to search results page with query
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
     }
   }
 

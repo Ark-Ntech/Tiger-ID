@@ -10,7 +10,16 @@ import Button from '../components/common/Button'
 import Badge from '../components/common/Badge'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Alert from '../components/common/Alert'
-import { PaperAirplaneIcon, WrenchScrewdriverIcon, CheckCircleIcon, XCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
+import { PaperAirplaneIcon, WrenchScrewdriverIcon, CheckCircleIcon, XCircleIcon, ArrowPathIcon, ChatBubbleLeftRightIcon, GlobeAltIcon, PhotoIcon, NewspaperIcon, LightBulbIcon, ShareIcon, CubeIcon, DocumentTextIcon, ServerIcon, DocumentArrowUpIcon, CpuChipIcon } from '@heroicons/react/24/outline'
+import WebSearchTab from '../components/investigations/WebSearchTab'
+import ReverseImageSearchTab from '../components/investigations/ReverseImageSearchTab'
+import NewsMonitorTab from '../components/investigations/NewsMonitorTab'
+import LeadGenerationTab from '../components/investigations/LeadGenerationTab'
+import RelationshipAnalysisTab from '../components/investigations/RelationshipAnalysisTab'
+import EvidenceCompilationTab from '../components/investigations/EvidenceCompilationTab'
+import CrawlSchedulerTab from '../components/investigations/CrawlSchedulerTab'
+import ReferenceDataTab from '../components/investigations/ReferenceDataTab'
+import ModelTestingTab from '../components/investigations/ModelTestingTab'
 
 interface Message {
   id: string
@@ -40,6 +49,7 @@ const LaunchInvestigation = () => {
   const { data: mcpToolsData, isLoading: toolsLoading, error: toolsError } = useGetMCPToolsQuery()
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  const [activeTab, setActiveTab] = useState(0)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set())
@@ -48,6 +58,19 @@ const LaunchInvestigation = () => {
   const [error, setError] = useState<string | null>(null)
   const [investigationId, setInvestigationId] = useState<string | null>(null)
   const [launchProgress, setLaunchProgress] = useState<{ step: string; status: 'pending' | 'running' | 'completed' | 'error' }[]>([])
+
+  const tabs = [
+    { name: 'Assistant', icon: ChatBubbleLeftRightIcon, component: null },
+    { name: 'Model Testing', icon: CpuChipIcon, component: ModelTestingTab },
+    { name: 'Web Search', icon: GlobeAltIcon, component: WebSearchTab },
+    { name: 'Reverse Image Search', icon: PhotoIcon, component: ReverseImageSearchTab },
+    { name: 'News Monitor', icon: NewspaperIcon, component: NewsMonitorTab },
+    { name: 'Lead Generation', icon: LightBulbIcon, component: LeadGenerationTab },
+    { name: 'Relationship Analysis', icon: ShareIcon, component: RelationshipAnalysisTab },
+    { name: 'Evidence Compilation', icon: DocumentTextIcon, component: EvidenceCompilationTab },
+    { name: 'Crawl Scheduler', icon: ServerIcon, component: CrawlSchedulerTab },
+    { name: 'Reference Data', icon: DocumentArrowUpIcon, component: ReferenceDataTab },
+  ]
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -210,12 +233,15 @@ const LaunchInvestigation = () => {
     })
   })
 
+  const ActiveComponent = tabs[activeTab].component
+  const isAssistantTab = activeTab === 0
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Launch Investigation</h1>
-          <p className="text-gray-600 mt-2">Chat with the AI assistant to start your investigation</p>
+          <p className="text-gray-600 mt-2">Configure and launch investigations with AI assistance</p>
         </div>
         {investigationId && (
           <Button variant="primary" onClick={handleViewWorkspace}>
@@ -226,7 +252,38 @@ const LaunchInvestigation = () => {
 
       {error && <Alert type="error">{error}</Alert>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      {/* Tab Navigation */}
+      <Card padding="none">
+        <div className="border-b border-gray-200">
+          <nav className="flex overflow-x-auto -mb-px" aria-label="Tabs">
+            {tabs.map((tab, index) => {
+              const Icon = tab.icon
+              return (
+                <button
+                  key={index}
+                  onClick={() => setActiveTab(index)}
+                  className={`
+                    flex items-center gap-2 whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm
+                    transition-colors
+                    ${
+                      activeTab === index
+                        ? 'border-primary-600 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }
+                  `}
+                >
+                  <Icon className="h-5 w-5" />
+                  {tab.name}
+                </button>
+              )
+            })}
+          </nav>
+        </div>
+
+        {/* Tab Content */}
+        <div className="p-6">
+          {isAssistantTab ? (
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Chat Interface */}
         <div className="lg:col-span-3">
           <Card className="h-[calc(100vh-16rem)] flex flex-col">
@@ -466,6 +523,11 @@ const LaunchInvestigation = () => {
           )}
         </div>
       </div>
+          ) : ActiveComponent ? (
+            <ActiveComponent />
+          ) : null}
+        </div>
+      </Card>
     </div>
   )
 }

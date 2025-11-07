@@ -84,10 +84,15 @@ class CrawlSchedulerService:
             List of facilities due for crawl
         """
         if not self.session:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 self.session = session
                 self.ref_service = ReferenceDataService(session)
-                return self.get_facilities_due_for_crawl(max_facilities, reference_facilities_only, hours_since_last_crawl)
+                result = self.get_facilities_due_for_crawl(max_facilities, reference_facilities_only, hours_since_last_crawl)
+                self.session = None
+                return result
+            finally:
+                session.close()
         
         cutoff_time = datetime.utcnow() - timedelta(hours=hours_since_last_crawl)
         
@@ -138,10 +143,15 @@ class CrawlSchedulerService:
             Scheduling result
         """
         if not self.session:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 self.session = session
                 self.ref_service = ReferenceDataService(session)
-                return self.schedule_crawl(facility_id, priority)
+                result = self.schedule_crawl(facility_id, priority)
+                self.session = None
+                return result
+            finally:
+                session.close()
         
         facility = self.session.query(Facility).filter(
             Facility.facility_id == facility_id
@@ -189,10 +199,15 @@ class CrawlSchedulerService:
             Batch scheduling results
         """
         if not self.session:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 self.session = session
                 self.ref_service = ReferenceDataService(session)
-                return self.schedule_batch_crawl(facility_ids, max_facilities, reference_facilities_only)
+                result = self.schedule_batch_crawl(facility_ids, max_facilities, reference_facilities_only)
+                self.session = None
+                return result
+            finally:
+                session.close()
         
         if facility_ids:
             facilities_to_crawl = self.session.query(Facility).filter(
@@ -258,10 +273,15 @@ class CrawlSchedulerService:
             Crawl statistics
         """
         if not self.session:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 self.session = session
                 self.ref_service = ReferenceDataService(session)
-                return self.get_crawl_statistics(facility_id, days)
+                result = self.get_crawl_statistics(facility_id, days)
+                self.session = None
+                return result
+            finally:
+                session.close()
         
         cutoff_date = datetime.utcnow() - timedelta(days=days)
         

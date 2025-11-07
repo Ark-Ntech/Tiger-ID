@@ -1,103 +1,44 @@
-"""Siamese network for tiger stripe re-identification"""
+"""Siamese network for tiger stripe re-identification using Modal"""
 
-import torch
-import torch.nn as nn
-import torchvision.transforms as transforms
-from torchvision.models import resnet50
+import os
 from PIL import Image
 import numpy as np
 from typing import Optional, List, Tuple
 import io
 
 from backend.utils.logging import get_logger
+from backend.services.modal_client import get_modal_client
 from backend.config.settings import get_settings
 
 logger = get_logger(__name__)
 
 
-class SiameseNetwork(nn.Module):
-    """Siamese network for tiger re-identification"""
-    
-    def __init__(self, embedding_dim: int = 512):
-        super(SiameseNetwork, self).__init__()
-        # Use ResNet50 as backbone
-        resnet = resnet50(pretrained=True)
-        # Remove final fully connected layer
-        self.backbone = nn.Sequential(*list(resnet.children())[:-1])
-        
-        # Add embedding layer
-        self.embedding = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten(),
-            nn.Linear(2048, embedding_dim),
-            nn.BatchNorm1d(embedding_dim),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(embedding_dim, embedding_dim)
-        )
-        
-        # Normalize embeddings
-        self.normalize = nn.functional.normalize
-    
-    def forward(self, x):
-        """Forward pass"""
-        features = self.backbone(x)
-        embedding = self.embedding(features)
-        embedding = self.normalize(embedding, p=2, dim=1)
-        return embedding
-
-
 class TigerReIDModel:
-    """Tiger stripe re-identification model using Siamese network"""
+    """Tiger stripe re-identification model using Modal"""
     
     def __init__(self, model_path: Optional[str] = None, device: Optional[str] = None):
         """
-        Initialize tiger re-ID model
+        Initialize tiger re-ID model (Modal-based).
         
         Args:
-            model_path: Path to model checkpoint
-            device: Device to run model on (cuda or cpu). If None, auto-detects.
+            model_path: Path to model checkpoint (deprecated, kept for compatibility)
+            device: Device to run model on (deprecated, kept for compatibility)
         """
-        if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.device = device
         settings = get_settings()
         self.model_path = model_path or settings.models.reid_path
         self.embedding_dim = settings.models.reid_embedding_dim
-        self.model = SiameseNetwork(embedding_dim=self.embedding_dim)
-        self.model.to(device)
-        self.model.eval()
+        self.modal_client = get_modal_client()
         
-        # Image preprocessing
-        self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-        
-        # Horizontal flip for left/right flank support
-        self.flip_transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.RandomHorizontalFlip(p=1.0),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+        logger.info("TigerReIDModel initialized with Modal backend")
     
     async def load_model(self):
-        """Load the re-ID model"""
-        try:
-            if os.path.exists(self.model_path):
-                logger.info("Loading re-ID model from path", path=self.model_path)
-                checkpoint = torch.load(self.model_path, map_location=self.device)
-                self.model.load_state_dict(checkpoint['model_state_dict'])
-                self.model.eval()
-            else:
-                logger.warning("Re-ID model not found, using untrained model", path=self.model_path)
-                # Model will use pretrained ResNet50 features but won't be fine-tuned
-                
-        except Exception as e:
-            logger.error("Failed to load re-ID model", error=str(e))
-            raise
+        """
+        Load the re-ID model (no-op for Modal backend).
+        
+        Model is loaded on Modal containers automatically.
+        """
+        logger.info("Model loading handled by Modal backend")
+        pass
     
     async def generate_embedding(
         self,
@@ -105,42 +46,30 @@ class TigerReIDModel:
         use_flip: bool = False
     ) -> np.ndarray:
         """
-        Generate embedding for a tiger image
+        Generate embedding for a tiger image using Modal.
         
         Args:
             image: PIL Image of tiger
-            use_flip: Whether to also use horizontally flipped version
+            use_flip: Whether to also use horizontally flipped version (not supported in Modal yet)
             
         Returns:
             Embedding vector (numpy array)
         """
-        if not hasattr(self.model, 'forward'):
-            await self.load_model()
-        
         try:
-            # Apply transform
-            if use_flip:
-                # Try both original and flipped
-                tensor = self.transform(image).unsqueeze(0).to(self.device)
-                flip_tensor = self.flip_transform(image).unsqueeze(0).to(self.device)
+            # Call Modal service
+            result = await self.modal_client.tiger_reid_embedding(image)
+            
+            if result.get("success"):
+                embedding = np.array(result["embedding"])
                 
-                with torch.no_grad():
-                    embedding1 = self.model(tensor)
-                    embedding2 = self.model(flip_tensor)
-                    # Average embeddings
-                    embedding = (embedding1 + embedding2) / 2
+                # Normalize
+                embedding = embedding / np.linalg.norm(embedding)
+                
+                return embedding
             else:
-                tensor = self.transform(image).unsqueeze(0).to(self.device)
-                with torch.no_grad():
-                    embedding = self.model(tensor)
-            
-            # Convert to numpy
-            embedding_np = embedding.cpu().numpy().flatten()
-            
-            # Normalize
-            embedding_np = embedding_np / np.linalg.norm(embedding_np)
-            
-            return embedding_np
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"Modal embedding generation failed: {error_msg}")
+                raise RuntimeError(f"Failed to generate embedding: {error_msg}")
             
         except Exception as e:
             logger.error("Error generating embedding", error=str(e))

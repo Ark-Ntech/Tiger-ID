@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
-import { useGetInvestigationQuery, useGetInvestigationEventsQuery, useGetEvidenceQuery } from '../app/api'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useGetInvestigationQuery, useGetInvestigationEventsQuery, useGetEvidenceQuery, useGetTigerQuery } from '../app/api'
 import Card from '../components/common/Card'
 import Badge from '../components/common/Badge'
 import LoadingSpinner from '../components/common/LoadingSpinner'
@@ -8,10 +8,10 @@ import Button from '../components/common/Button'
 import TimelineView from '../components/investigations/TimelineView'
 import EvidenceGallery from '../components/investigations/EvidenceGallery'
 import AnnotationPanel from '../components/investigations/AnnotationPanel'
+import RelationshipsView from '../components/investigations/RelationshipsView'
 import ExportDialog from '../components/investigations/ExportDialog'
 import ChatInterface from '../components/investigations/ChatInterface'
 import AgentActivity from '../components/investigations/AgentActivity'
-import RelationshipGraph from '../components/investigations/RelationshipGraph'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { formatDate } from '../utils/formatters'
 import {
@@ -20,8 +20,38 @@ import {
   ClockIcon,
   FolderIcon,
   ChatBubbleLeftIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
-import { useNavigate } from 'react-router-dom'
+
+// Component to display related tiger
+const RelatedTigerCard = ({ tigerId }: { tigerId: string }) => {
+  const navigate = useNavigate()
+  const { data: tigerData, isLoading } = useGetTigerQuery(tigerId, { skip: !tigerId })
+  
+  if (isLoading) {
+    return <div className="p-2 text-sm text-gray-500">Loading...</div>
+  }
+  
+  if (!tigerData?.data) {
+    return (
+      <div className="p-3 bg-gray-50 rounded-lg">
+        <p className="text-sm text-gray-600">Tiger ID: {tigerId}</p>
+      </div>
+    )
+  }
+  
+  const tiger = tigerData.data
+  
+  return (
+    <div
+      className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+      onClick={() => navigate(`/tigers`)}
+    >
+      <p className="font-medium text-gray-900">{tiger.name || 'Unnamed Tiger'}</p>
+      <p className="text-xs text-gray-500 mt-1">ID: {tigerId}</p>
+    </div>
+  )
+}
 
 const InvestigationWorkspace = () => {
   const { id } = useParams<{ id: string }>()
@@ -189,14 +219,29 @@ const InvestigationWorkspace = () => {
             <AnnotationPanel investigationId={id!} />
           )}
           {activeTab === 'relationships' && (
-            <RelationshipGraph investigationId={id!} />
+            <RelationshipsView investigationId={id!} />
           )}
           {activeTab === 'chat' && (
             <ChatInterface investigationId={id!} />
           )}
         </div>
-        <div>
+        <div className="space-y-6">
           <AgentActivity investigationId={id!} />
+          
+          {/* Related Tigers */}
+          {investigation.related_tigers && investigation.related_tigers.length > 0 && (
+            <Card>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <ShieldCheckIcon className="h-5 w-5 mr-2 text-primary-600" />
+                Related Tigers
+              </h3>
+              <div className="space-y-2">
+                {investigation.related_tigers.map((tigerId) => (
+                  <RelatedTigerCard key={tigerId} tigerId={tigerId} />
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 

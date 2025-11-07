@@ -6,7 +6,12 @@ Modern tiger trafficking investigation platform with AI-powered analysis, real-t
 
 ## ⚡ Quick Start (30 Seconds)
 
-**With Docker (Recommended):**
+### Option 1: npm (Simplest - NEW!)
+```bash
+npm start
+```
+
+### Option 2: Docker (Recommended for Production)
 ```batch
 setup\windows\START_DOCKER.bat
 ```
@@ -22,7 +27,7 @@ setup\windows\START_DOCKER.bat
 
 A comprehensive multi-agent investigative platform for detecting tiger trafficking through:
 
-- 🔍 **AI-Powered Investigation** - Multi-agent orchestration with OmniVinci
+- 🔍 **AI-Powered Investigation** - Hermes powered agent usage
 - 🐅 **Tiger Re-Identification** - Deep learning stripe pattern analysis
 - 🏢 **Facility Monitoring** - Continuous social media monitoring
 - 👥 **Multi-User Collaboration** - Real-time workspace with role-based access
@@ -114,27 +119,22 @@ Tiger ID/
 
 ## 🛠️ Setup Options
 
-### Option 1: Docker (Recommended)
+### Option 1: npm (Simplest - Recommended!)
+```bash
+npm run setup    # First time only
+npm start        # Every time after
+```
+✅ **Cross-platform** - works on Windows, Mac, Linux  
+✅ **Simple** - one command to start everything  
+✅ **Modern** - standard npm workflow
+
+### Option 2: Docker (For Production)
 ```batch
 setup\windows\START_DOCKER.bat
 ```
 ✅ Everything automatic - database, migrations, test user, all services
 
-### Option 2: Local Development
-```batch
-setup\windows\SETUP_ALL.bat      # First time
-setup\windows\START_SERVERS.bat  # Every time after
-```
-✅ More control - good for development
-
-### Option 3: Hybrid
-```powershell
-docker compose up -d postgres redis    # Database only
-setup\windows\START_SERVERS.bat        # Servers locally
-```
-✅ Best of both - database in Docker, code local
-
-**See:** `setup/docs/SETUP_GUIDE.md` for detailed instructions
+**See:** `NPM_COMMANDS.md` for all available commands
 
 ---
 
@@ -221,7 +221,16 @@ Apache License 2.0 - see `LICENSE` file.
 
 ## ✨ Recent Updates
 
-### React Migration (Latest)
+### Modal Integration (Latest - Nov 2025)
+- ✅ All ML models on Modal serverless GPUs
+- ✅ OmniVinci upgraded to fully open source
+- ✅ Zero API keys required
+- ✅ Simplified startup with npm commands
+- ✅ 21/21 tests passing
+
+**See:** `SETUP_COMPLETE.md` for Modal deployment details
+
+### React Migration (Complete)
 - ✅ Complete Streamlit → React migration
 - ✅ Modern TypeScript frontend
 - ✅ Real-time WebSocket communication
@@ -232,5 +241,5 @@ Apache License 2.0 - see `LICENSE` file.
 
 ---
 
-**Ready to start?** Run `setup\windows\START_DOCKER.bat` and you're good to go! 🚀
+**Ready to start?** Just run `npm start` and you're good to go! 🚀
 

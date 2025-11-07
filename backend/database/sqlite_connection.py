@@ -1,5 +1,6 @@
 """SQLite connection for demo/testing mode (no PostgreSQL required)"""
 
+import os
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
@@ -11,8 +12,12 @@ from backend.database.models import Base, Tiger, TigerImage
 # Import AuditLog model so it's included in Base.metadata
 from backend.database.audit_models import AuditLog  # noqa: F401
 
-# SQLite database path
-DB_PATH = Path("data/demo.db")
+# SQLite database path - use production.db for production, demo.db for demo
+USE_SQLITE_DEMO = os.getenv("USE_SQLITE_DEMO", "false").lower() == "true"
+if USE_SQLITE_DEMO:
+    DB_PATH = Path("data/demo.db")
+else:
+    DB_PATH = Path("data/production.db")
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # Create SQLite engine
@@ -82,11 +87,11 @@ def init_sqlite_db():
     inspector = inspect(sqlite_engine)
     tables = inspector.get_table_names()
     if 'audit_logs' not in tables:
-        print("⚠️  WARNING: audit_logs table was not created!")
+        print("WARNING: audit_logs table was not created!")
     else:
-        print("✅ audit_logs table verified")
+        print("[OK] audit_logs table verified")
     
-    print(f"✅ SQLite database tables created ({len(tables)} tables)")
+    print(f"[OK] SQLite database tables created ({len(tables)} tables)")
 
 
 def create_demo_data():
@@ -359,28 +364,28 @@ def create_demo_data():
         try:
             enrich_facilities_from_dataset(db, create_tigers=True)
         except Exception as e:
-            print(f"⚠️  Facility enrichment skipped: {e}")
+            print(f"WARNING: Facility enrichment skipped: {e}")
         
         # Load tiger images from ATRW dataset
         print("\n→ Loading tiger images from ATRW dataset...")
         try:
             load_atrw_images(db)
         except Exception as e:
-            print(f"⚠️  ATRW image loading skipped: {e}")
+            print(f"WARNING: ATRW image loading skipped: {e}")
         
         # Refresh counts after enrichment and image loading
         enriched_facility_count = db.query(Facility).count()
         enriched_tiger_count = db.query(Tiger).count()
         image_count = db.query(TigerImage).count()
         
-        print("✅ Demo data created:")
-        print("   👤 Users: admin/admin, investigator/demo")
-        print(f"   🏢 Facilities: {enriched_facility_count} (including enriched dataset)")
-        print(f"   🐅 Tigers: {enriched_tiger_count} (including enriched dataset)")
-        print(f"   📁 Investigations: {len(investigations)}")
-        print("   📊 Investigation Steps: 7 (showing agent workflow)")
-        print("   🔍 Evidence Items: 5 (various sources)")
-        print(f"   🖼️  Tiger Images: {image_count} (from ATRW dataset)")
+        print("[OK] Demo data created:")
+        print("   Users: admin/admin, investigator/demo")
+        print(f"   Facilities: {enriched_facility_count} (including enriched dataset)")
+        print(f"   Tigers: {enriched_tiger_count} (including enriched dataset)")
+        print(f"   Investigations: {len(investigations)}")
+        print("   Investigation Steps: 7 (showing agent workflow)")
+        print("   Evidence Items: 5 (various sources)")
+        print(f"   Tiger Images: {image_count} (from ATRW dataset)")
 
 
 def enrich_facilities_from_dataset(db_session, create_tigers: bool = True):
@@ -395,23 +400,23 @@ def enrich_facilities_from_dataset(db_session, create_tigers: bool = True):
     facility_file = Path(__file__).parent.parent.parent / "data" / "datasets" / "non-accredited-facilities"
     
     if not facility_file.exists():
-        print(f"⚠️  Facility dataset not found: {facility_file}")
+        print(f"WARNING: Facility dataset not found: {facility_file}")
         return
     
     # Parse facility data
     facilities_data = parse_facility_file(facility_file)
     
     if not facilities_data:
-        print("⚠️  No facility data found in dataset")
+        print("WARNING: No facility data found in dataset")
         return
     
     # Enrich facilities (using existing session)
     print(f"   → Processing {len(facilities_data)} facilities from dataset...")
     stats = enrich_facilities(facilities_data, create_tigers=create_tigers, dry_run=False, db_session=db_session)
     
-    print(f"   ✅ Enriched: {stats['facilities_created']} created, {stats['facilities_updated']} updated")
+    print(f"   [OK] Enriched: {stats['facilities_created']} created, {stats['facilities_updated']} updated")
     if create_tigers:
-        print(f"   ✅ Created {stats['tigers_created']} tigers from facility data")
+        print(f"   [OK] Created {stats['tigers_created']} tigers from facility data")
 
 
 def load_atrw_images(db_session):
@@ -425,7 +430,7 @@ def load_atrw_images(db_session):
     atrw_images_dir = project_root / "data" / "models" / "atrw" / "images"
     
     if not atrw_images_dir.exists():
-        print(f"⚠️  ATRW images directory not found: {atrw_images_dir}")
+        print(f"WARNING: ATRW images directory not found: {atrw_images_dir}")
         return
     
     IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
@@ -434,7 +439,7 @@ def load_atrw_images(db_session):
     tiger_dirs = [d for d in atrw_images_dir.iterdir() if d.is_dir()]
     
     if not tiger_dirs:
-        print(f"⚠️  No tiger directories found in {atrw_images_dir}")
+        print(f"WARNING: No tiger directories found in {atrw_images_dir}")
         return
     
     images_loaded = 0
@@ -490,13 +495,13 @@ def load_atrw_images(db_session):
             images_loaded += 1
     
     db_session.commit()
-    print(f"   ✅ Loaded {images_loaded} images for {tigers_with_images} tigers from ATRW dataset")
+    print(f"   [OK] Loaded {images_loaded} images for {tigers_with_images} tigers from ATRW dataset")
 
 
 if __name__ == "__main__":
-    print("\n🗄️  Initializing SQLite Demo Database...\n")
+    print("\nInitializing SQLite Demo Database...\n")
     init_sqlite_db()
     create_demo_data()
-    print("\n✅ SQLite demo database ready!")
+    print("\n[OK] SQLite demo database ready!")
     print(f"   Database file: {DB_PATH.absolute()}\n")
 

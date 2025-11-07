@@ -105,7 +105,8 @@ class NewsMonitoringService:
             News articles grouped by facility
         """
         try:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 ref_service = ReferenceDataService(session)
                 reference_facilities = ref_service.get_reference_facilities(limit=100)
                 
@@ -135,7 +136,8 @@ class NewsMonitoringService:
                     "facilities_with_news": len(facility_news),
                     "search_date": datetime.utcnow().isoformat()
                 }
-        
+            finally:
+                session.close()
         except Exception as e:
             logger.error(f"Reference facility monitoring failed: {e}", exc_info=True)
             return {"error": str(e), "facility_news": {}}

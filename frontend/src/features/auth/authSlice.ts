@@ -2,7 +2,10 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import axios from 'axios'
 import type { User, LoginCredentials, AuthResponse } from '../../types'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// Use Vite proxy in development, direct URL in production
+const API_URL = import.meta.env.PROD 
+  ? (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+  : '' // Empty string uses Vite proxy
 
 interface AuthState {
   user: User | null

@@ -42,13 +42,18 @@ class TimelineService:
             Timeline data
         """
         if not self.session:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 self.session = session
-                return self.build_investigation_timeline(
+                result = self.build_investigation_timeline(
                     investigation_id,
                     include_web_evidence,
                     include_reference_events
                 )
+                self.session = None
+                return result
+            finally:
+                session.close()
         
         # Get investigation
         investigation = self.session.query(Investigation).filter(
@@ -251,9 +256,14 @@ class TimelineService:
             Correlated events
         """
         if not self.session:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 self.session = session
-                return self.correlate_events(facility_id, date_range)
+                result = self.correlate_events(facility_id, date_range)
+                self.session = None
+                return result
+            finally:
+                session.close()
         
         # Find investigations mentioning this facility
         evidence_items = self.session.query(Evidence).filter(

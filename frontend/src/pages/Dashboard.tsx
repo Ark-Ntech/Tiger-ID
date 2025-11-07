@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   useGetDashboardStatsQuery,
   useGetInvestigationsQuery,
@@ -9,10 +10,17 @@ import {
   useGetGeographicAnalyticsQuery,
   useGetTigerAnalyticsQuery,
   useGetAgentAnalyticsQuery,
+  useGetFacilityAnalyticsQuery,
+  useGetModelsAvailableQuery,
+  useBenchmarkModelMutation,
+  api,
 } from '../app/api'
+import { useAppDispatch } from '../app/hooks'
 import Card from '../components/common/Card'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Badge from '../components/common/Badge'
+import Button from '../components/common/Button'
+import Alert from '../components/common/Alert'
 import {
   BarChart,
   Bar,
@@ -29,12 +37,23 @@ import {
   Line,
 } from 'recharts'
 import GeographicMap from '../components/analytics/GeographicMap'
+import { 
+  ChartBarIcon, 
+  ClockIcon, 
+  CpuChipIcon,
+  ArrowPathIcon,
+  BuildingOfficeIcon,
+  FolderOpenIcon,
+} from '@heroicons/react/24/outline'
 
 const COLORS = ['#ff6b35', '#f97316', '#ea580c', '#c2410c', '#10b981', '#3b82f6']
 
 const Dashboard = () => {
+  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const [timeRange, setTimeRange] = useState('30days')
   const [activeTab, setActiveTab] = useState(0)
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
 
   // Calculate date range
   const dateRange = useMemo(() => {
@@ -62,10 +81,10 @@ const Dashboard = () => {
     }
   }, [timeRange])
 
-  const { data: statsData, isLoading: statsLoading } = useGetDashboardStatsQuery()
-  const { data: investigationsData, isLoading: investigationsLoading } =
+  const { data: statsData, isLoading: statsLoading, refetch: refetchStats } = useGetDashboardStatsQuery()
+  const { data: investigationsData, isLoading: investigationsLoading, refetch: refetchInvestigations } =
     useGetInvestigationsQuery({ page: 1, page_size: 10 })
-  const { data: facilitiesData } = useGetFacilitiesQuery({ page: 1, page_size: 1000 })
+  const { data: facilitiesData, refetch: refetchFacilities } = useGetFacilitiesQuery({ page: 1, page_size: 1000 })
   
   const facilities = facilitiesData?.data?.data || []
 
@@ -73,21 +92,38 @@ const Dashboard = () => {
   const {
     data: investigationAnalyticsData,
     isLoading: investigationAnalyticsLoading,
+    refetch: refetchInvestigationAnalytics,
   } = useGetInvestigationAnalyticsQuery(dateRange)
   const {
     data: evidenceAnalyticsData,
     isLoading: evidenceAnalyticsLoading,
+    refetch: refetchEvidenceAnalytics,
   } = useGetEvidenceAnalyticsQuery(dateRange)
   const {
     data: verificationAnalyticsData,
     isLoading: verificationAnalyticsLoading,
+    refetch: refetchVerificationAnalytics,
   } = useGetVerificationAnalyticsQuery(dateRange)
-  const { data: geographicAnalyticsData, isLoading: geographicAnalyticsLoading } =
-    useGetGeographicAnalyticsQuery({})
-  const { data: tigerAnalyticsData, isLoading: tigerAnalyticsLoading } =
-    useGetTigerAnalyticsQuery({})
-  const { data: agentAnalyticsData, isLoading: agentAnalyticsLoading } =
-    useGetAgentAnalyticsQuery(dateRange)
+  const { 
+    data: geographicAnalyticsData, 
+    isLoading: geographicAnalyticsLoading,
+    refetch: refetchGeographicAnalytics,
+  } = useGetGeographicAnalyticsQuery({})
+  const { 
+    data: tigerAnalyticsData, 
+    isLoading: tigerAnalyticsLoading,
+    refetch: refetchTigerAnalytics,
+  } = useGetTigerAnalyticsQuery({})
+  const { 
+    data: agentAnalyticsData, 
+    isLoading: agentAnalyticsLoading,
+    refetch: refetchAgentAnalytics,
+  } = useGetAgentAnalyticsQuery(dateRange)
+  const {
+    data: facilityAnalyticsData,
+    isLoading: facilityAnalyticsLoading,
+    refetch: refetchFacilityAnalytics,
+  } = useGetFacilityAnalyticsQuery(dateRange)
 
   const stats = statsData?.data
   const invAnalytics = investigationAnalyticsData?.data
@@ -96,6 +132,7 @@ const Dashboard = () => {
   const geoAnalytics = geographicAnalyticsData?.data
   const tigAnalytics = tigerAnalyticsData?.data
   const agAnalytics = agentAnalyticsData?.data
+  const facAnalytics = facilityAnalyticsData?.data
 
   const isLoading =
     statsLoading ||
@@ -105,7 +142,48 @@ const Dashboard = () => {
     verificationAnalyticsLoading ||
     geographicAnalyticsLoading ||
     tigerAnalyticsLoading ||
-    agentAnalyticsLoading
+    agentAnalyticsLoading ||
+    facilityAnalyticsLoading
+
+  // Refresh all data
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([
+      refetchStats(),
+      refetchInvestigations(),
+      refetchFacilities(),
+      refetchInvestigationAnalytics(),
+      refetchEvidenceAnalytics(),
+      refetchVerificationAnalytics(),
+      refetchGeographicAnalytics(),
+      refetchTigerAnalytics(),
+      refetchAgentAnalytics(),
+      refetchFacilityAnalytics(),
+    ])
+    setLastRefresh(new Date())
+    // Invalidate all analytics cache
+    dispatch(api.util.invalidateTags(['Analytics', 'Dashboard']))
+  }, [
+    refetchStats,
+    refetchInvestigations,
+    refetchFacilities,
+    refetchInvestigationAnalytics,
+    refetchEvidenceAnalytics,
+    refetchVerificationAnalytics,
+    refetchGeographicAnalytics,
+    refetchTigerAnalytics,
+    refetchAgentAnalytics,
+    refetchFacilityAnalytics,
+    dispatch,
+  ])
+
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      handleRefresh()
+    }, 5 * 60 * 1000) // 5 minutes
+
+    return () => clearInterval(interval)
+  }, [handleRefresh])
 
   // Transform analytics data for charts
   const investigationsByStatus = useMemo(() => {
@@ -144,7 +222,62 @@ const Dashboard = () => {
       .slice(-6) // Last 6 data points
   }, [tigAnalytics])
 
-  const tabs = ['Investigations', 'Evidence & Verification', 'Geographic', 'Tigers', 'Agent Performance']
+  // Model performance data - use Modal model metadata instead of mock data
+  const { data: modelsData, isLoading: modelsLoading } = useGetModelsAvailableQuery()
+  const [benchmarkModel, { isLoading: benchmarkLoading }] = useBenchmarkModelMutation()
+  const [selectedModel, setSelectedModel] = useState<string>('')
+  const [benchmarkResults, setBenchmarkResults] = useState<any>(null)
+  const [isBenchmarking, setIsBenchmarking] = useState(false)
+
+  const availableModels = modelsData?.data?.models || {}
+  const modelNames = Object.keys(availableModels)
+  
+  // Use Modal model metadata instead of mock data
+  const performanceData = useMemo(() => {
+    return modelNames.map((modelName) => {
+      const modelInfo = availableModels[modelName] || {}
+      return {
+        model: modelName,
+        name: modelInfo.name || modelName,
+        description: modelInfo.description || '',
+        gpu: modelInfo.gpu || 'Unknown',
+        backend: modelInfo.backend || 'Modal',
+        type: modelInfo.type || 'unknown',
+        // Performance metrics would come from actual benchmarks
+        // For now, show model metadata
+        rank1_accuracy: null,
+        map: null,
+        latency_ms: null,
+        throughput: null,
+      }
+    })
+  }, [modelNames, availableModels])
+
+  const handleBenchmark = async () => {
+    if (!selectedModel) return
+    setIsBenchmarking(true)
+    setBenchmarkResults(null)
+    try {
+      setBenchmarkResults({
+        message: 'Benchmarking requires test images. Use the Model Testing page to run benchmarks.',
+        model: selectedModel
+      })
+    } catch (error: any) {
+      console.error('Error benchmarking model:', error)
+    } finally {
+      setIsBenchmarking(false)
+    }
+  }
+
+  const tabs = [
+    'Investigations', 
+    'Evidence & Verification', 
+    'Geographic', 
+    'Tigers', 
+    'Facilities',
+    'Agent Performance', 
+    'Model Performance'
+  ]
 
   return (
     <div className="space-y-6">
@@ -153,8 +286,22 @@ const Dashboard = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
           <p className="text-gray-600 mt-2">Comprehensive system analytics and insights</p>
+          {lastRefresh && (
+            <p className="text-xs text-gray-500 mt-1">
+              Last updated: {lastRefresh.toLocaleTimeString()}
+            </p>
+          )}
         </div>
         <div className="flex items-center space-x-2">
+          <Button
+            variant="secondary"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="flex items-center space-x-2"
+          >
+            <ArrowPathIcon className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </Button>
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
@@ -193,8 +340,9 @@ const Dashboard = () => {
 
         <div className="p-6">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex flex-col items-center justify-center py-12">
               <LoadingSpinner size="xl" />
+              <p className="text-sm text-gray-500 mt-4">Loading analytics data...</p>
             </div>
           ) : (
             <>
@@ -205,6 +353,7 @@ const Dashboard = () => {
                   investigationsByPriority={investigationsByPriority}
                   investigationsTimeline={investigationsTimeline}
                   investigations={investigationsData?.data?.data || []}
+                  navigate={navigate}
                 />
               )}
               {activeTab === 1 && (
@@ -214,15 +363,36 @@ const Dashboard = () => {
                 />
               )}
               {activeTab === 2 && (
-                <GeographicAnalyticsTab analytics={geoAnalytics} facilities={facilities} />
+                <GeographicAnalyticsTab analytics={geoAnalytics} facilities={facilities} navigate={navigate} />
               )}
               {activeTab === 3 && (
                 <TigerAnalyticsTab
                   analytics={tigAnalytics}
                   tigerIdentifications={tigerIdentifications}
+                  navigate={navigate}
                 />
               )}
-              {activeTab === 4 && <AgentAnalyticsTab analytics={agAnalytics} />}
+              {activeTab === 4 && (
+                <FacilityAnalyticsTab
+                  analytics={facAnalytics}
+                  facilities={facilities}
+                  navigate={navigate}
+                />
+              )}
+              {activeTab === 5 && <AgentAnalyticsTab analytics={agAnalytics} />}
+              {activeTab === 6 && (
+                <ModelPerformanceTab
+                  modelsData={modelsData}
+                  modelsLoading={modelsLoading}
+                  performanceData={performanceData}
+                  selectedModel={selectedModel}
+                  setSelectedModel={setSelectedModel}
+                  benchmarkResults={benchmarkResults}
+                  isBenchmarking={isBenchmarking}
+                  benchmarkLoading={benchmarkLoading}
+                  handleBenchmark={handleBenchmark}
+                />
+              )}
             </>
           )}
         </div>
@@ -230,12 +400,15 @@ const Dashboard = () => {
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
+        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/investigations')}>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">Total Investigations</p>
+            <div className="flex items-center justify-center space-x-2 mb-2">
+              <FolderOpenIcon className="h-5 w-5 text-primary-600" />
+              <p className="text-sm font-medium text-gray-600">Total Investigations</p>
+            </div>
             <p className="text-4xl font-bold text-primary-600 mt-2">{stats?.total_investigations || 0}</p>
             <p className="text-xs text-gray-500 mt-1">
-              {stats?.active_investigations || 0} active
+              {stats?.active_investigations || 0} active • {stats?.completed_investigations || 0} completed
             </p>
           </div>
         </Card>
@@ -246,7 +419,9 @@ const Dashboard = () => {
             <p className="text-4xl font-bold text-green-600 mt-2">
               {invAnalytics?.completion_rate?.toFixed(0) || 0}%
             </p>
-            <p className="text-xs text-gray-500 mt-1">Cases resolved</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {invAnalytics?.completed || 0} of {invAnalytics?.total_investigations || 0} resolved
+            </p>
           </div>
         </Card>
 
@@ -260,13 +435,67 @@ const Dashboard = () => {
           </div>
         </Card>
 
+        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/tigers')}>
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-600">Total Tigers</p>
+            <p className="text-4xl font-bold text-purple-600 mt-2">
+              {stats?.total_tigers || tigAnalytics?.total_tigers || 0}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              {tigAnalytics?.identification_rate?.toFixed(0) || 0}% identification rate
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Additional Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/facilities')}>
+          <div className="text-center">
+            <div className="flex items-center justify-center space-x-2 mb-2">
+              <BuildingOfficeIcon className="h-5 w-5 text-green-600" />
+              <p className="text-sm font-medium text-gray-600">Total Facilities</p>
+            </div>
+            <p className="text-4xl font-bold text-green-600 mt-2">{stats?.total_facilities || facAnalytics?.total_facilities || 0}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {facAnalytics?.avg_tigers_per_facility?.toFixed(1) || 0} avg tigers/facility
+            </p>
+          </div>
+        </Card>
+
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">Tiger Identifications</p>
-            <p className="text-4xl font-bold text-purple-600 mt-2">
-              {tigAnalytics?.identification_rate?.toFixed(0) || 0}%
+            <p className="text-sm font-medium text-gray-600">Total Evidence</p>
+            <p className="text-4xl font-bold text-orange-600 mt-2">
+              {evAnalytics?.total_evidence || 0}
             </p>
-            <p className="text-xs text-gray-500 mt-1">AI accuracy</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {evAnalytics?.high_relevance_count || 0} high relevance
+            </p>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-600">Verification Tasks</p>
+            <p className="text-4xl font-bold text-indigo-600 mt-2">
+              {verAnalytics?.total_tasks || 0}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              {verAnalytics?.pending || 0} pending • {verAnalytics?.approved || 0} approved
+            </p>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-600">Agent Steps</p>
+            <p className="text-4xl font-bold text-teal-600 mt-2">
+              {agAnalytics?.total_steps || 0}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              {agAnalytics?.unique_agents || 0} unique agents
+            </p>
           </div>
         </Card>
       </div>
@@ -281,6 +510,7 @@ const InvestigationAnalyticsTab = ({
   investigationsByPriority,
   investigationsTimeline,
   investigations,
+  navigate,
 }: any) => {
   return (
     <div className="space-y-6">
@@ -340,13 +570,17 @@ const InvestigationAnalyticsTab = ({
             {investigations.map((investigation: any) => (
               <div
                 key={investigation.id}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                onClick={() => navigate && navigate(`/investigations/${investigation.id}`)}
               >
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">{investigation.title}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {investigation.description?.substring(0, 50)}...
-                  </p>
+                <div className="flex items-center space-x-3 flex-1">
+                  <FolderOpenIcon className="h-5 w-5 text-primary-600" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{investigation.title}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {investigation.description?.substring(0, 50)}...
+                    </p>
+                  </div>
                 </div>
                 <Badge
                   variant={
@@ -449,7 +683,7 @@ const EvidenceVerificationAnalyticsTab = ({ evidenceAnalytics, verificationAnaly
 }
 
 // Geographic Analytics Tab Component
-const GeographicAnalyticsTab = ({ analytics, facilities }: any) => {
+const GeographicAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
   const facilitiesByState = analytics?.facilities_by_state
     ? Object.entries(analytics.facilities_by_state)
         .map(([state, count]) => ({
@@ -499,12 +733,46 @@ const GeographicAnalyticsTab = ({ analytics, facilities }: any) => {
           </div>
         </Card>
       )}
+
+      {/* Top Facilities List */}
+      {facilities && facilities.length > 0 && (
+        <Card>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Facilities</h3>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {[...facilities]
+              .sort((a: any, b: any) => (b.tiger_count || 0) - (a.tiger_count || 0))
+              .slice(0, 10)
+              .map((facility: any) => (
+                <div
+                  key={facility.id}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                  onClick={() => navigate && navigate(`/facilities/${facility.id}`)}
+                >
+                  <div className="flex items-center space-x-3 flex-1">
+                    <BuildingOfficeIcon className="h-5 w-5 text-green-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {facility.exhibitor_name || facility.name}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {facility.city && facility.state
+                          ? `${facility.city}, ${facility.state}`
+                          : facility.state || facility.city || 'Location unknown'}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="info">{facility.tiger_count || 0} tigers</Badge>
+                </div>
+              ))}
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
 
 // Tiger Analytics Tab Component
-const TigerAnalyticsTab = ({ analytics, tigerIdentifications }: any) => {
+const TigerAnalyticsTab = ({ analytics, tigerIdentifications, navigate }: any) => {
   const tigersByStatus = analytics?.by_status
     ? Object.entries(analytics.by_status).map(([name, value]) => ({
         name,
@@ -563,7 +831,144 @@ const TigerAnalyticsTab = ({ analytics, tigerIdentifications }: any) => {
             {analytics?.identification_rate?.toFixed(0) || 0}%
           </p>
         </Card>
+        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate && navigate('/tigers')}>
+          <p className="text-sm text-gray-600">View All Tigers</p>
+          <p className="text-lg font-semibold text-primary-600 mt-2">→ Browse Tigers</p>
+        </Card>
       </div>
+    </div>
+  )
+}
+
+// Facility Analytics Tab Component
+const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
+  const facilitiesByState = analytics?.state_distribution
+    ? Object.entries(analytics.state_distribution)
+        .map(([state, count]) => ({
+          state,
+          count: Number(count),
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10)
+    : []
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card>
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-600">Total Facilities</p>
+            <p className="text-4xl font-bold text-primary-600 mt-2">
+              {analytics?.total_facilities || 0}
+            </p>
+          </div>
+        </Card>
+        <Card>
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-600">Total Tigers</p>
+            <p className="text-4xl font-bold text-green-600 mt-2">
+              {analytics?.total_tigers || 0}
+            </p>
+          </div>
+        </Card>
+        <Card>
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-600">Avg Tigers/Facility</p>
+            <p className="text-4xl font-bold text-blue-600 mt-2">
+              {analytics?.avg_tigers_per_facility?.toFixed(1) || 0}
+            </p>
+          </div>
+        </Card>
+        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate && navigate('/facilities')}>
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-600">View All Facilities</p>
+            <p className="text-lg font-semibold text-primary-600 mt-2">→ Browse</p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Facilities by State</h3>
+          <ResponsiveContainer width="100%" height={400}>
+            <BarChart data={facilitiesByState} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis type="number" />
+              <YAxis dataKey="state" type="category" width={80} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#10b981" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+
+        <Card>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">State Distribution</h3>
+          <ResponsiveContainer width="100%" height={400}>
+            <PieChart>
+              <Pie
+                data={facilitiesByState.slice(0, 8)}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ state, percent }) => `${state}: ${(percent * 100).toFixed(0)}%`}
+                outerRadius={100}
+                fill="#8884d8"
+                dataKey="count"
+              >
+                {facilitiesByState.slice(0, 8).map((entry: any, index: number) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+
+      {/* Top Facilities List */}
+      {facilities && facilities.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Top Facilities by Tiger Count</h3>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate && navigate('/facilities')}
+            >
+              View All
+            </Button>
+          </div>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {[...facilities]
+              .sort((a: any, b: any) => (b.tiger_count || 0) - (a.tiger_count || 0))
+              .slice(0, 15)
+              .map((facility: any) => (
+                <div
+                  key={facility.id}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                  onClick={() => navigate && navigate(`/facilities/${facility.id}`)}
+                >
+                  <div className="flex items-center space-x-3 flex-1">
+                    <BuildingOfficeIcon className="h-5 w-5 text-green-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {facility.exhibitor_name || facility.name}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {facility.city && facility.state
+                          ? `${facility.city}, ${facility.state}`
+                          : facility.state || facility.city || 'Location unknown'}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="info">{facility.tiger_count || 0} tigers</Badge>
+                </div>
+              ))}
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
@@ -615,6 +1020,205 @@ const AgentAnalyticsTab = ({ analytics }: any) => {
           <p className="text-2xl font-bold text-gray-900">{analytics?.unique_agents || 0}</p>
         </Card>
       </div>
+    </div>
+  )
+}
+
+// Model Performance Tab Component
+const ModelPerformanceTab = ({
+  modelsData,
+  modelsLoading,
+  performanceData,
+  selectedModel,
+  setSelectedModel,
+  benchmarkResults,
+  isBenchmarking,
+  benchmarkLoading,
+  handleBenchmark,
+}: any) => {
+  const availableModels = modelsData?.data?.models || {}
+  const modelNames = Object.keys(availableModels)
+
+  if (modelsLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LoadingSpinner size="xl" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Model Performance</h2>
+          <p className="text-gray-600 mt-2">Compare RE-ID model performance metrics</p>
+        </div>
+        <div className="flex gap-2">
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Select model to benchmark</option>
+            {modelNames.map((modelName) => (
+              <option key={modelName} value={modelName}>
+                {modelName}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="primary"
+            onClick={handleBenchmark}
+            disabled={!selectedModel || isBenchmarking || benchmarkLoading}
+          >
+            {isBenchmarking || benchmarkLoading ? (
+              <>
+                <LoadingSpinner size="sm" className="mr-2" />
+                Benchmarking...
+              </>
+            ) : (
+              'Run Benchmark'
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Model Comparison Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Accuracy Comparison */}
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <ChartBarIcon className="h-6 w-6 text-blue-600" />
+            <h3 className="text-xl font-semibold">Accuracy Comparison</h3>
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={performanceData.filter(d => d.rank1_accuracy !== null)}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis domain={[0, 1]} />
+              <Tooltip formatter={(value: number) => value !== null ? `${(value * 100).toFixed(1)}%` : 'N/A'} />
+              <Legend />
+              <Bar dataKey="rank1_accuracy" fill="#3b82f6" name="Rank-1 Accuracy" />
+              <Bar dataKey="map" fill="#10b981" name="mAP" />
+            </BarChart>
+          </ResponsiveContainer>
+          {performanceData.filter(d => d.rank1_accuracy === null).length > 0 && (
+            <p className="text-sm text-gray-500 mt-2">
+              Performance metrics require benchmarks. Use the Model Testing page to run benchmarks.
+            </p>
+          )}
+        </Card>
+
+        {/* Performance Metrics */}
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <ClockIcon className="h-6 w-6 text-green-600" />
+            <h3 className="text-xl font-semibold">Performance Metrics</h3>
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={performanceData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="model" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="latency_ms" stroke="#ef4444" name="Latency (ms)" />
+              <Line type="monotone" dataKey="throughput" stroke="#8b5cf6" name="Throughput (img/s)" />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+
+      {/* Model Performance Table */}
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <CpuChipIcon className="h-6 w-6 text-purple-600" />
+          <h3 className="text-xl font-semibold">Model Performance Summary</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Model
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Rank-1 Accuracy
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  mAP
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Latency (ms)
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Throughput (img/s)
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {performanceData.map((model: any, index: number) => (
+                <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <div>
+                      <div className="font-medium">{model.name || model.model}</div>
+                      <div className="text-xs text-gray-500">{model.description || model.type}</div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {model.rank1_accuracy !== null ? `${(model.rank1_accuracy * 100).toFixed(1)}%` : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {model.map !== null ? `${(model.map * 100).toFixed(1)}%` : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {model.latency_ms !== null ? `${model.latency_ms.toFixed(0)}ms` : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {model.throughput !== null ? `${model.throughput.toFixed(1)}` : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <Badge variant="success">Available</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Benchmark Results */}
+      {benchmarkResults && (
+        <Card>
+          <h3 className="text-xl font-semibold mb-4">Benchmark Results</h3>
+          <Alert type="info">{benchmarkResults.message}</Alert>
+        </Card>
+      )}
+
+      {/* Model Information */}
+      {performanceData.length > 0 && (
+        <Card>
+          <h3 className="text-xl font-semibold mb-4">Model Information</h3>
+          <div className="space-y-2">
+            {performanceData.map((model: any) => (
+              <div key={model.model} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <span className="font-medium text-gray-900">{model.name || model.model}</span>
+                  <span className="text-sm text-gray-500 ml-2">({model.gpu})</span>
+                </div>
+                <Badge variant="info">{model.type}</Badge>
+              </div>
+            ))}
+          </div>
+          <p className="text-sm text-gray-500 mt-4">
+            Performance metrics require benchmarks. Use the Model Testing page to run benchmarks and compare models.
+          </p>
+        </Card>
+      )}
     </div>
   )
 }

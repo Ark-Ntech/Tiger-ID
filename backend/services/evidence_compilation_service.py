@@ -47,10 +47,15 @@ class EvidenceCompilationService:
             Compiled evidence record
         """
         if not self.session:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 self.session = session
                 self.ref_service = ReferenceDataService(session)
-                return await self.compile_evidence_from_web(investigation_id, source_url, source_type)
+                result = await self.compile_evidence_from_web(investigation_id, source_url, source_type)
+                self.session = None
+                return result
+            finally:
+                session.close()
         
         try:
             # Extract data from URL
@@ -173,10 +178,15 @@ class EvidenceCompilationService:
             Grouped evidence
         """
         if not self.session:
-            with get_db_session() as session:
+            session = next(get_db_session())
+            try:
                 self.session = session
                 self.ref_service = ReferenceDataService(session)
-                return self.group_related_evidence(investigation_id)
+                result = self.group_related_evidence(investigation_id)
+                self.session = None
+                return result
+            finally:
+                session.close()
         
         evidence_items = self.session.query(Evidence).filter(
             Evidence.investigation_id == investigation_id
