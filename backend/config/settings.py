@@ -4,7 +4,7 @@ from typing import Optional
 from pathlib import Path
 import os
 import yaml
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, ValidationError, model_validator
 
 
@@ -103,6 +103,13 @@ class OmniVinciSettings(BaseSettings):
 
 class FirecrawlSettings(BaseSettings):
     """Firecrawl configuration"""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="allow"
+    )
+    
     api_key: Optional[str] = Field(default=None, alias="FIRECRAWL_API_KEY")
     timeout: int = 30
     search_enabled: bool = Field(default=True, alias="FIRECRAWL_SEARCH_ENABLED")
@@ -120,6 +127,13 @@ class PuppeteerSettings(BaseSettings):
 
 class WebSearchSettings(BaseSettings):
     """Web search provider configuration"""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="allow"
+    )
+    
     # Primary search provider
     provider: str = Field(default="firecrawl", alias="WEB_SEARCH_PROVIDER")  # firecrawl, serper, tavily, perplexity
     
@@ -195,11 +209,25 @@ class ModelSettings(BaseSettings):
     pose_enabled: bool = True
     
     # General settings
-    device: str = Field(default="cuda", alias="MODEL_DEVICE")
+    device: str = Field(default="auto", alias="MODEL_DEVICE")  # "auto" will be resolved to "cuda" or "cpu" based on availability
     batch_size: int = Field(default=32, alias="BATCH_SIZE")
+    preload_on_startup: bool = Field(default=False, alias="MODEL_PRELOAD_ON_STARTUP")
+    cache_ttl: int = Field(default=3600, alias="MODEL_CACHE_TTL")
+    max_batch_size: int = Field(default=50, alias="MAX_BATCH_SIZE")
     
     # Dataset settings
     datasets: DatasetSettings = DatasetSettings()
+
+
+class AutoInvestigationSettings(BaseSettings):
+    """Auto-investigation configuration"""
+    enabled: bool = Field(default=False, alias="AUTO_INVESTIGATION_ENABLED")
+    min_confidence: float = Field(default=0.8, alias="AUTO_INVESTIGATION_MIN_CONFIDENCE")
+    priority_mapping: dict = {
+        "high": 0.95,
+        "medium": 0.8,
+        "low": 0.7
+    }
 
 
 class ExternalAPISettings(BaseSettings):
@@ -252,15 +280,16 @@ class AppSettings(BaseSettings):
     web_search: WebSearchSettings = WebSearchSettings()
     models: ModelSettings = ModelSettings()
     datasets: DatasetSettings = DatasetSettings()
+    auto_investigation: AutoInvestigationSettings = AutoInvestigationSettings()
     external_apis: ExternalAPISettings = ExternalAPISettings()
     
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": False,
-        "env_nested_delimiter": "__",
-        "extra": "allow"  # Allow extra fields from env/yaml
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        env_nested_delimiter="__",
+        extra="allow"
+    )
     
     @model_validator(mode='after')
     def validate_secret_key(self):

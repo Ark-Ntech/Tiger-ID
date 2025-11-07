@@ -35,6 +35,7 @@ class InvestigationStatus(enum.Enum):
     pending_verification = "pending_verification"
     completed = "completed"
     archived = "archived"
+    cancelled = "cancelled"
 
 
 class Priority(enum.Enum):

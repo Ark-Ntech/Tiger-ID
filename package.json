@@ -1,0 +1,44 @@
+{
+  "name": "tiger-id",
+  "version": "1.0.0",
+  "description": "Tiger trafficking investigation system with Modal-powered ML inference",
+  "private": true,
+  "scripts": {
+    "start": "concurrently --names \"BACKEND,FRONTEND\" --prefix-colors \"blue,green\" \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:backend": ".venv\\Scripts\\python.exe -m uvicorn backend.api.app:app --host 0.0.0.0 --port 8000",
+    "start:backend:dev": ".venv\\Scripts\\python.exe -m uvicorn backend.api.app:app --host 0.0.0.0 --port 8000 --reload",
+    "start:frontend": "cd frontend && npm run dev",
+    "dev": "npm run start",
+    "test": ".venv/Scripts/python -m pytest tests/test_modal_integration.py -v",
+    "test:all": ".venv/Scripts/python -m pytest -v",
+    "test:frontend": "cd frontend && npm run test",
+    "deploy:modal": ".venv/Scripts/python -m modal deploy backend/modal_app.py",
+    "modal:status": ".venv/Scripts/python -m modal app list",
+    "modal:logs": ".venv/Scripts/python -m modal app logs tiger-id-models --tail",
+    "setup": "npm run setup:backend && npm run setup:frontend",
+    "setup:backend": ".venv/Scripts/pip install -r requirements.txt && .venv/Scripts/python scripts/init_db.py",
+    "setup:frontend": "cd frontend && npm install",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "ruff check backend/",
+    "lint:frontend": "cd frontend && npm run lint"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "cross-env": "^10.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "python": ">=3.11.0"
+  },
+  "keywords": [
+    "tiger",
+    "wildlife",
+    "trafficking",
+    "investigation",
+    "modal",
+    "ml",
+    "computer-vision"
+  ],
+  "author": "Tiger ID Team",
+  "license": "Apache-2.0"
+}

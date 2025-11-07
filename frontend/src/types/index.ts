@@ -51,6 +51,7 @@ export interface Investigation {
   completed_at?: string
   tags?: string[]
   metadata?: Record<string, any>
+  related_tigers?: string[]
 }
 
 export interface InvestigationInput {
@@ -92,10 +93,30 @@ export interface TigerIdentificationRequest {
 }
 
 export interface TigerIdentificationResult {
+  identified: boolean
   tiger_id?: string
+  tiger_name?: string
+  similarity?: number
   confidence: number
-  matches: TigerMatch[]
-  is_new: boolean
+  message?: string
+  requires_verification?: boolean
+  model?: string
+  matches?: TigerMatch[]
+  // For multi-model results
+  models?: Record<string, any>
+  best_match?: {
+    tiger_id: string
+    tiger_name: string
+    confidence: number
+    model: string
+  }
+  all_matches?: Array<{
+    tiger_id: string
+    tiger_name: string
+    confidence: number
+    model: string
+  }>
+  is_new?: boolean
 }
 
 export interface TigerMatch {
@@ -108,7 +129,9 @@ export interface TigerMatch {
 export interface Facility {
   id: string
   name: string
+  exhibitor_name?: string
   license_number?: string
+  usda_license?: string
   facility_type: string
   address: string
   city: string
@@ -118,8 +141,18 @@ export interface Facility {
   longitude?: number
   status: 'active' | 'inactive' | 'suspended'
   verified: boolean
+  tiger_count?: number
+  tiger_capacity?: number
+  accreditation_status?: string
+  ir_date?: string
+  last_inspection_date?: string
+  website?: string
+  social_media_links?: Record<string, string>
   social_media?: SocialMediaAccount[]
   last_inspection?: string
+  is_reference_facility?: boolean
+  data_source?: string
+  reference_metadata?: Record<string, any>
   created_at: string
   updated_at: string
 }
@@ -267,6 +300,9 @@ export interface WebSearchRequest {
   query: string
   limit?: number
   provider?: 'firecrawl' | 'serper' | 'tavily' | 'perplexity'
+  location?: string
+  gl?: string
+  hl?: string
 }
 
 export interface WebSearchResult {
@@ -282,6 +318,11 @@ export interface WebSearchResponse {
   count: number
   query: string
   provider: string
+  answer_box?: any
+  knowledge_graph?: any
+  people_also_ask?: any[]
+  related_questions?: any[]
+  total_results?: string
 }
 
 export interface ReverseImageSearchRequest {
@@ -380,26 +421,6 @@ export interface RelationshipAnalysisResponse {
     }>
   }
   facility_id: string
-}
-
-export interface NetworkGraphResponse {
-  network: {
-    nodes: Array<{
-      id: string
-      label: string
-      state?: string
-      tiger_count?: number
-      is_reference?: boolean
-    }>
-    edges: Array<{
-      from: string
-      to: string
-      type: string
-      strength: number
-    }>
-  }
-  node_count: number
-  edge_count: number
 }
 
 export interface EvidenceCompilationRequest {
@@ -669,5 +690,56 @@ export interface InvestigationEventsResponse {
   investigation_id: string
   events: InvestigationEvent[]
   count: number
+}
+
+// Model Testing types
+export interface ModelTestResult {
+  model_name: string
+  inference_time_ms: number
+  embedding_length: number
+  embedding_sample: number[]
+  message: string
+  error?: string
+}
+
+export interface ModelEvaluationResult {
+  model_name: string
+  metrics: {
+    rank1_accuracy: number
+    map: number
+    cmc_curve: number[]
+  }
+  dataset_name: string
+  total_queries: number
+  total_gallery: number
+}
+
+export interface ModelComparisonResult {
+  comparison_results: {
+    models: Record<string, {
+      rank1_accuracy: number
+      map: number
+      avg_inference_time_ms: number
+    }>
+    best_model: string
+    best_metric: string
+  }
+  dataset_name: string
+}
+
+export interface ModelBenchmarkResult {
+  model_name: string
+  benchmark_results: {
+    avg_inference_time_ms: number
+    min_inference_time_ms: number
+    max_inference_time_ms: number
+    memory_usage_mb: number
+  }
+  num_runs: number
+}
+
+export interface AvailableModelsResponse {
+  models: Record<string, any> | string[]
+  default: string
 }
 

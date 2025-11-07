@@ -169,33 +169,9 @@ async def create_investigation(
     }
 
 
-@router.get("/investigations/{investigation_id}")
-async def get_investigation(
-    investigation_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get investigation by ID"""
-    service = InvestigationService(db)
-    investigation = service.get_investigation(investigation_id)
-    
-    if not investigation:
-        raise HTTPException(status_code=404, detail="Investigation not found")
-    
-    return {
-        "success": True,
-        "data": {
-            "id": str(investigation.investigation_id),
-            "title": investigation.title,
-            "description": investigation.description,
-            "status": investigation.status.value if hasattr(investigation.status, 'value') else str(investigation.status),
-            "priority": investigation.priority.value if hasattr(investigation.priority, 'value') else str(investigation.priority),
-            "created_by": str(investigation.created_by),
-            "tags": investigation.tags or [],
-            "created_at": investigation.created_at.isoformat() if investigation.created_at else None,
-            "updated_at": investigation.updated_at.isoformat() if investigation.updated_at else None,
-        }
-    }
+# NOTE: /investigations/{investigation_id} route moved to investigation_routes.py
+# to avoid conflicts with /mcp-tools route. The investigation_router is registered
+# before the main router, so specific routes like /mcp-tools match first.
 
 
 @router.post("/investigations/{investigation_id}/launch")
@@ -209,124 +185,48 @@ async def launch_investigation(
 ):
     """Launch an investigation with user input, files, and selected tools"""
     from fastapi import UploadFile, File, Form
+    from backend.utils.logging import get_logger
     
-    service = InvestigationService(db)
+    logger = get_logger(__name__)
     
-    # Convert files to list if single file
-    file_list = files if isinstance(files, list) else ([files] if files else [])
+    logger.info(f"Launch investigation request: investigation_id={investigation_id}, user_input={user_input[:50] if user_input else None}, selected_tools={selected_tools}")
     
-    # Launch investigation
-    result = await service.launch_investigation(
-        investigation_id=investigation_id,
-        user_input=user_input or "Launch investigation",
-        files=file_list,
-        user_id=current_user.user_id
-    )
-    
-    return {
-        "success": True,
-        "data": {
-            "id": str(investigation_id),
-            "response": result.get("response", "Investigation launched successfully"),
-            "next_steps": result.get("next_steps", []),
-            "evidence_count": result.get("evidence_count", 0),
-            "status": result.get("status", "in_progress")
-        }
-    }
-
-
-# Tigers endpoints
-@router.get("/tigers")
-async def get_tigers(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get paginated list of tigers"""
-    query = db.query(Tiger)
-    tigers, total = paginate_query(query, page, page_size)
-    
-    # Convert to response format
-    tiger_data = []
-    for tiger in tigers:
-        # Get tiger images
-        tiger_images = db.query(TigerImage).filter(TigerImage.tiger_id == tiger.tiger_id).limit(5).all()
-        images = []
-        for img in tiger_images:
-            # Create URL for image - try relative path first
-            image_url = None
-            if img.image_path:
-                # Convert to URL-safe path
-                from pathlib import Path
-                img_path = Path(img.image_path)
-                # If it's relative to project root, make it a static URL
-                project_root = Path(__file__).parent.parent.parent
-                try:
-                    rel_path = img_path.relative_to(project_root)
-                    image_url = f"/static/images/{rel_path.as_posix()}"
-                except ValueError:
-                    # If not relative, use absolute path handling
-                    if img_path.exists():
-                        rel_path_str = img_path.as_posix().replace(str(project_root), '').lstrip('/').replace('\\', '/')
-                        image_url = f"/static/images/{rel_path_str}"
-            
-            if image_url:
-                images.append({
-                    "id": str(img.image_id),
-                    "url": image_url,
-                    "thumbnail_url": image_url,  # Can be optimized later
-                    "uploaded_at": img.created_at.isoformat() if img.created_at else None,
-                    "source": getattr(img, 'source', None) or "dataset",
-                    "metadata": getattr(img, 'metadata', {}) or {}
-                })
+    try:
+        service = InvestigationService(db)
         
-        tiger_data.append({
-            "id": str(tiger.tiger_id),
-            "name": tiger.name,
-            "estimated_age": getattr(tiger, 'estimated_age', None),
-            "sex": getattr(tiger, 'sex', None),
-            "first_seen": tiger.created_at.isoformat() if tiger.created_at else None,
-            "last_seen": tiger.last_seen_date.isoformat() if tiger.last_seen_date else None,
-            "confidence_score": getattr(tiger, 'confidence_score', 0.95) or 0.95,
-            "images": images,
-            "locations": [],
-        })
-    
-    paginated = PaginatedResponse.create(
-        data=tiger_data,
-        total=total,
-        page=page,
-        page_size=page_size
-    )
-    
-    return {
-        "success": True,
-        "data": paginated.model_dump()
-    }
-
-
-@router.get("/tigers/{tiger_id}")
-async def get_tiger(
-    tiger_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get tiger by ID"""
-    tiger = db.query(Tiger).filter(Tiger.tiger_id == tiger_id).first()
-    
-    if not tiger:
-        raise HTTPException(status_code=404, detail="Tiger not found")
-    
-    return {
-        "success": True,
-        "data": {
-            "id": str(tiger.tiger_id),
-            "name": tiger.name,
-            "last_seen": tiger.last_seen_date.isoformat() if tiger.last_seen_date else None,
-            "status": tiger.status.value if tiger.status else "active",
+        # Convert files to list if single file
+        file_list = files if isinstance(files, list) else ([files] if files else [])
+        
+        logger.info(f"Launching investigation with {len(file_list)} files and {len(selected_tools) if selected_tools else 0} selected tools")
+        
+        # Launch investigation with selected tools
+        result = await service.launch_investigation(
+            investigation_id=investigation_id,
+            user_input=user_input or "Launch investigation",
+            files=file_list,
+            user_id=current_user.user_id,
+            selected_tools=selected_tools or []
+        )
+        
+        logger.info(f"Investigation launched successfully. Response: {result.get('response', '')[:100]}")
+        
+        return {
+            "success": True,
+            "data": {
+                "id": str(investigation_id),
+                "response": result.get("response", "Investigation launched successfully"),
+                "next_steps": result.get("next_steps", []),
+                "evidence_count": result.get("evidence_count", 0),
+                "status": result.get("status", "in_progress")
+            }
         }
-    }
+    except Exception as e:
+        logger.error(f"Error launching investigation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to launch investigation: {str(e)}")
+
+
+# Tigers endpoints - Moved to tiger_routes.py to avoid conflicts
+# The tiger_router handles all /tigers/* routes with better functionality
 
 
 # Facilities endpoints
@@ -347,7 +247,9 @@ async def get_facilities(
         facility_data.append({
             "id": str(facility.facility_id),
             "name": facility.exhibitor_name,
+            "exhibitor_name": facility.exhibitor_name,
             "license_number": facility.usda_license,
+            "usda_license": facility.usda_license,
             "facility_type": "Zoo",  # Add if available
             "address": facility.address or "",
             "city": facility.city or "",
@@ -355,7 +257,18 @@ async def get_facilities(
             "country": "USA",  # Add if available
             "status": "active",  # Add if available
             "verified": True,  # Add if available
+            "tiger_count": facility.tiger_count or 0,
+            "tiger_capacity": facility.tiger_capacity,
+            "accreditation_status": facility.accreditation_status or "Unknown",
+            "ir_date": facility.ir_date.isoformat() if facility.ir_date else None,
+            "last_inspection_date": facility.last_inspection_date.isoformat() if facility.last_inspection_date else None,
+            "website": facility.website,
+            "social_media_links": facility.social_media_links or {},
+            "is_reference_facility": facility.is_reference_facility or False,
+            "data_source": facility.data_source,
+            "reference_metadata": facility.reference_metadata or {},
             "created_at": facility.created_at.isoformat() if facility.created_at else None,
+            "updated_at": facility.updated_at.isoformat() if facility.updated_at else None,
         })
     
     paginated = PaginatedResponse.create(
@@ -388,11 +301,89 @@ async def get_facility(
         "data": {
             "id": str(facility.facility_id),
             "name": facility.exhibitor_name,
+            "exhibitor_name": facility.exhibitor_name,
             "license_number": facility.usda_license,
-            "state": facility.state,
+            "usda_license": facility.usda_license,
+            "address": facility.address,
             "city": facility.city,
+            "state": facility.state,
+            "tiger_count": facility.tiger_count or 0,
+            "tiger_capacity": facility.tiger_capacity,
+            "accreditation_status": facility.accreditation_status,
+            "ir_date": facility.ir_date.isoformat() if facility.ir_date else None,
+            "last_inspection_date": facility.last_inspection_date.isoformat() if facility.last_inspection_date else None,
+            "website": facility.website,
+            "social_media_links": facility.social_media_links or {},
+            "is_reference_facility": facility.is_reference_facility or False,
+            "data_source": facility.data_source,
+            "reference_metadata": facility.reference_metadata or {},
+            "created_at": facility.created_at.isoformat() if facility.created_at else None,
+            "updated_at": facility.updated_at.isoformat() if facility.updated_at else None,
         }
     }
+
+
+@router.post("/facilities/import-excel")
+async def import_facilities_excel(
+    file: UploadFile = File(...),
+    update_existing: bool = Form(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Import facilities from Excel file"""
+    from pathlib import Path
+    import tempfile
+    from scripts.parse_tpc_facilities_excel import parse_excel_file
+    from backend.services.facility_service import FacilityService
+    
+    # Validate file type
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only Excel files (.xlsx, .xls) are supported."
+        )
+    
+    # Save uploaded file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp_file:
+        content = await file.read()
+        tmp_file.write(content)
+        tmp_path = Path(tmp_file.name)
+    
+    try:
+        # Parse Excel file
+        facilities_data = parse_excel_file(tmp_path)
+        
+        if not facilities_data:
+            raise HTTPException(
+                status_code=400,
+                detail="No facility data found in Excel file"
+            )
+        
+        # Import facilities
+        facility_service = FacilityService(db)
+        stats = facility_service.bulk_import_facilities(
+            facilities_data,
+            update_existing=update_existing
+        )
+        
+        return {
+            "success": True,
+            "data": {
+                "message": f"Imported {stats['created']} facilities, updated {stats['updated']}, skipped {stats['skipped']}",
+                "stats": stats
+            }
+        }
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error importing facilities: {str(e)}"
+        )
+    
+    finally:
+        # Clean up temporary file
+        if tmp_path.exists():
+            tmp_path.unlink()
 
 
 # Dashboard stats endpoint
@@ -402,14 +393,14 @@ async def get_dashboard_stats(
     current_user: User = Depends(get_current_user)
 ):
     """Get dashboard statistics"""
-    from backend.database.models import Investigation
+    from backend.database.models import Investigation, InvestigationStatus
     
     total_investigations = db.query(Investigation).count()
     active_investigations = db.query(Investigation).filter(
-        Investigation.status == "active"
+        Investigation.status == InvestigationStatus.active
     ).count()
     completed_investigations = db.query(Investigation).filter(
-        Investigation.status == "completed"
+        Investigation.status == InvestigationStatus.completed
     ).count()
     total_tigers = db.query(Tiger).count()
     total_facilities = db.query(Facility).count()

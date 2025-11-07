@@ -1,11 +1,15 @@
 """Service layer for Facility operations"""
 
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from datetime import datetime
 
 from backend.database.models import Facility, Tiger
+from backend.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class FacilityService:
@@ -118,4 +122,94 @@ class FacilityService:
         self.session.commit()
         self.session.refresh(facility)
         return facility
+    
+    def bulk_import_facilities(
+        self,
+        facilities_data: List[Dict[str, Any]],
+        update_existing: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Bulk import facilities from Excel data
+        
+        Args:
+            facilities_data: List of facility data dictionaries
+            update_existing: If True, update existing facilities; if False, skip them
+            
+        Returns:
+            Dictionary with import statistics
+        """
+        stats = {
+            'created': 0,
+            'updated': 0,
+            'skipped': 0,
+            'errors': []
+        }
+        
+        for facility_data in facilities_data:
+            try:
+                exhibitor_name = facility_data.get('exhibitor_name')
+                if not exhibitor_name:
+                    stats['skipped'] += 1
+                    continue
+                
+                usda_license = facility_data.get('usda_license')
+                
+                # Check if facility exists
+                existing_facility = None
+                if usda_license:
+                    existing_facility = self.get_facility_by_license(usda_license)
+                
+                if not existing_facility:
+                    # Try to find by name
+                    facilities = self.get_facilities(
+                        search_query=exhibitor_name,
+                        limit=10
+                    )
+                    for fac in facilities:
+                        if fac.exhibitor_name.lower() == exhibitor_name.lower():
+                            existing_facility = fac
+                            break
+                
+                if existing_facility:
+                    if update_existing:
+                        # Update existing facility
+                        for key, value in facility_data.items():
+                            if key != 'facility_id' and hasattr(existing_facility, key):
+                                setattr(existing_facility, key, value)
+                        stats['updated'] += 1
+                    else:
+                        stats['skipped'] += 1
+                else:
+                    # Create new facility
+                    facility = Facility(
+                        exhibitor_name=facility_data.get('exhibitor_name'),
+                        usda_license=facility_data.get('usda_license'),
+                        state=facility_data.get('state'),
+                        city=facility_data.get('city'),
+                        address=facility_data.get('address'),
+                        tiger_count=facility_data.get('tiger_count', 0),
+                        tiger_capacity=facility_data.get('tiger_capacity'),
+                        social_media_links=facility_data.get('social_media_links', {}),
+                        website=facility_data.get('website'),
+                        ir_date=facility_data.get('ir_date'),
+                        accreditation_status=facility_data.get('accreditation_status', 'Non-Accredited'),
+                        is_reference_facility=facility_data.get('is_reference_facility', True),
+                        data_source=facility_data.get('data_source', 'tpc_non_accredited_facilities'),
+                        reference_dataset_version=facility_data.get('reference_dataset_version'),
+                        reference_metadata=facility_data.get('reference_metadata', {})
+                    )
+                    self.session.add(facility)
+                    stats['created'] += 1
+                
+                self.session.commit()
+                
+            except Exception as e:
+                logger.error(f"Error importing facility {facility_data.get('exhibitor_name', 'unknown')}: {e}", exc_info=True)
+                stats['errors'].append({
+                    'facility': facility_data.get('exhibitor_name', 'unknown'),
+                    'error': str(e)
+                })
+                self.session.rollback()
+        
+        return stats
 

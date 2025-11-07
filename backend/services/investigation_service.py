@@ -235,10 +235,21 @@ class InvestigationService:
         investigation_id: UUID,
         user_input: str,
         files: List[Any],
-        user_id: UUID
+        user_id: UUID,
+        selected_tools: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Launch an investigation with user input and files"""
-        from backend.agents import OrchestratorAgent
+        """Launch an investigation with user input and files using Hermes chat orchestrator (or OmniVinci for video)"""
+        from backend.models.hermes_chat import get_hermes_chat_model
+        from backend.models.omnivinci import get_omnivinci_model
+        from backend.api.mcp_tools_routes import list_mcp_tools
+        from backend.database import get_db_session
+        from backend.utils.logging import get_logger
+        from pathlib import Path
+        import tempfile
+        import os
+        import httpx
+        
+        logger = get_logger(__name__)
         
         # Update investigation status
         investigation = self.get_investigation(investigation_id)
@@ -252,72 +263,207 @@ class InvestigationService:
             raise ValueError("Cannot launch cancelled investigation.")
         
         investigation = self.start_investigation(investigation_id)
-        
-        # Status is already set to 'active' by start_investigation
-        # No need to change it again
         self.session.commit()
         self.session.refresh(investigation)
         
         # Process files
         file_data = []
+        video_path = None
         for file in files:
             file_data.append({
                 "name": getattr(file, "filename", "unknown"),
                 "type": getattr(file, "content_type", "unknown"),
             })
-        
-        # Use orchestrator to process request
-        from backend.database import get_db_session
+            # Save video files for OmniVinci
+            if getattr(file, "content_type", "").startswith("video/"):
+                try:
+                    video_bytes = await file.read()
+                    with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
+                        tmp_file.write(video_bytes)
+                        video_path = Path(tmp_file.name)
+                except Exception as e:
+                    logger.warning(f"Could not save video file: {e}")
         
         try:
-            with get_db_session() as session:
-                orchestrator = OrchestratorAgent(db=session)
-                result = await orchestrator.launch_investigation(
-                    investigation_id=investigation_id,
-                    user_inputs={
-                        "text": user_input,
-                        "query": user_input,
-                        "files": file_data,
-                        "images": [f for f in file_data if f.get("type", "").startswith("image/")]
-                    },
-                    context={"user_id": str(user_id)}
+            # Get available tools for Hermes/OmniVinci
+            # Use next() to get session from generator
+            session = next(get_db_session())
+            try:
+                from backend.auth.auth import get_current_user
+                from backend.database.models import User
+                
+                # Get user for tool listing
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if not user:
+                    raise ValueError("User not found")
+                
+                # Get MCP tools
+                tools_response = await list_mcp_tools(user, session)
+                tools_data = tools_response.get("data", {}).get("servers", {})
+                
+                # Flatten tools into a simple list
+                all_tools = []
+                for server_name, server_data in tools_data.items():
+                    server_tools = server_data.get("tools", [])
+                    for tool in server_tools:
+                        # Filter by selected_tools if provided
+                        if selected_tools and tool.get("name", "") not in selected_tools:
+                            continue
+                        all_tools.append({
+                            "name": tool.get("name", ""),
+                            "description": tool.get("description", ""),
+                            "server": server_name,
+                            "inputSchema": tool.get("inputSchema", {})
+                        })
+                
+                logger.info(f"Providing {len(all_tools)} tools for agentic calling")
+            finally:
+                session.close()
+            
+            # Check if we have video content
+            has_video = video_path and video_path.exists()
+            
+            if has_video:
+                # Use OmniVinci for video analysis (its true purpose)
+                logger.info(f"Using OmniVinci for video analysis: {video_path}")
+                omnivinci_model = get_omnivinci_model()
+                
+                # Create tool callback URL for OmniVinci to call back when it wants to use tools
+                tool_callback_url = f"http://localhost:8000/api/v1/investigations/{investigation_id}/tool-callback"
+                
+                # Prepare prompt for OmniVinci (video analysis)
+                prompt = f"""Analyze this video for tiger conservation investigation purposes.
+
+User request: {user_input}
+
+Available Tools (you can request these if needed):
+{chr(10).join([f"- {tool.get('name', '')}: {tool.get('description', '')}" for tool in all_tools[:10]])}
+
+Provide a detailed analysis of the video content, identifying any tigers, their behavior, environment, and any relevant conservation concerns."""
+                
+                result = await omnivinci_model.analyze_video(
+                    video_path,
+                    prompt,
+                    all_tools,
+                    tool_callback_url
                 )
+                
+                # Extract response from OmniVinci
+                if result.get("success"):
+                    analysis = result.get("analysis", "")
+                    tool_requests = result.get("tool_requests", [])
+                    if tool_requests:
+                        logger.info(f"OmniVinci requested {len(tool_requests)} tools")
+                        analysis += f"\n\n[Note: {len(tool_requests)} tool(s) were requested for execution]"
+                    response_message = analysis
+                else:
+                    error_msg = result.get("error", "Unknown error")
+                    logger.error(f"OmniVinci video analysis failed: {error_msg}")
+                    response_message = f"Video analysis error: {error_msg}"
+                    
+                step_type = "omnivinci_video_analysis"
+                agent_name = "omnivinci"
+                
+            else:
+                # Use Hermes-3 for text-based chat orchestration (proper tool calling)
+                logger.info("Using Hermes-3 chat orchestrator for text-only query")
+                hermes_model = get_hermes_chat_model()
+                
+                # Format tools for Hermes
+                hermes_tools = [
+                    {
+                        "name": tool.get("name"),
+                        "description": tool.get("description"),
+                        "parameters": tool.get("inputSchema", {})
+                    }
+                    for tool in all_tools
+                ]
+                
+                # Chat with Hermes (it has native tool calling)
+                result = await hermes_model.chat(
+                    message=user_input,
+                    tools=hermes_tools,
+                    conversation_history=None,  # TODO: Implement conversation history storage
+                    max_tokens=2048,
+                    temperature=0.7
+                )
+                
+                # Extract response from Hermes
+                if result.get("success"):
+                    response_text = result.get("response", "")
+                    tool_calls = result.get("tool_calls", [])
+                    
+                    if tool_calls:
+                        logger.info(f"Hermes requested {len(tool_calls)} tool calls")
+                        # Execute tool calls
+                        for tool_call in tool_calls:
+                            tool_name = tool_call.get("name")
+                            tool_args = tool_call.get("arguments", {})
+                            logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+                            
+                            # Find the server for this tool
+                            tool_server = None
+                            for tool in all_tools:
+                                if tool.get("name") == tool_name:
+                                    tool_server = tool.get("server")
+                                    break
+                            
+                            if tool_server:
+                                # Execute the tool via orchestrator
+                                from backend.agents import OrchestratorAgent
+                                exec_session = next(get_db_session())
+                                try:
+                                    orchestrator = OrchestratorAgent(db=exec_session)
+                                    tool_result = await orchestrator.use_mcp_tool(
+                                        server_name=tool_server,
+                                        tool_name=tool_name,
+                                        arguments=tool_args
+                                    )
+                                    logger.info(f"Tool {tool_name} executed: {str(tool_result)[:100]}")
+                                    # Add tool result to response
+                                    response_text += f"\n\n[Tool {tool_name} result: {str(tool_result)[:200]}...]"
+                                finally:
+                                    exec_session.close()
+                    
+                    response_message = response_text
+                else:
+                    error_msg = result.get("error", "Unknown error")
+                    logger.error(f"Hermes chat failed: {error_msg}")
+                    response_message = f"Chat error: {error_msg}. Please try again."
+                
+                step_type = "hermes_chat"
+                agent_name = "hermes"
+            
+            # Log investigation step
+            self.add_investigation_step(
+                investigation_id=investigation_id,
+                step_type=step_type,
+                agent_name=agent_name,
+                status="completed",
+                result={"response": response_message[:500]}  # Limit result size
+            )
+            
+            # Clean up video file if created
+            if video_path and video_path.exists():
+                try:
+                    os.unlink(video_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete temporary video file: {e}")
+            
+            return {
+                "investigation_id": str(investigation_id),
+                "response": response_message,
+                "next_steps": [],
+                "evidence_count": 0,
+                "status": "in_progress"
+            }
+            
         except Exception as e:
-            # If error occurs, mark investigation as failed
-            investigation.status = "failed"
+            logger.error(f"Error in launch_investigation: {e}", exc_info=True)
+            # If error occurs, mark investigation as cancelled (failed is not valid enum value)
+            investigation.status = "cancelled"
             if not investigation.summary:
                 investigation.summary = {}
             investigation.summary["error"] = str(e)
             self.session.commit()
             raise
-        
-        # Log investigation step
-        step = self.add_investigation_step(
-            investigation_id=investigation_id,
-            step_type="orchestrator_processing",
-            agent_name="orchestrator",
-            status="completed",
-            result=result
-        )
-        
-        # Extract evidence from result
-        evidence_items = result.get("evidence", [])
-        if isinstance(evidence_items, list):
-            evidence_count = len(evidence_items)
-        else:
-            # If evidence is nested in research_results
-            research_results = result.get("research_results", {})
-            evidence_items = research_results.get("evidence", [])
-            evidence_count = len(evidence_items) if isinstance(evidence_items, list) else 0
-        
-        # Get report summary if available
-        report = result.get("report", {})
-        response_message = report.get("summary", "Investigation launched successfully")
-        
-        return {
-            "investigation_id": str(investigation_id),
-            "response": response_message,
-            "next_steps": result.get("next_steps", []),
-            "evidence_count": evidence_count,
-            "status": "in_progress"
-        }

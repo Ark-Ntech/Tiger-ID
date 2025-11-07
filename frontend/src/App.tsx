@@ -12,11 +12,11 @@ import InvestigationWorkspace from './pages/InvestigationWorkspace'
 import LaunchInvestigation from './pages/LaunchInvestigation'
 import Tigers from './pages/Tigers'
 import Facilities from './pages/Facilities'
+import FacilityDetail from './pages/FacilityDetail'
 import Verification from './pages/Verification'
-import InvestigationTools from './pages/InvestigationTools'
-import Templates from './pages/Templates'
-import SavedSearches from './pages/SavedSearches'
 import PasswordReset from './pages/PasswordReset'
+import SearchResults from './pages/SearchResults'
+import NotFound from './pages/NotFound'
 
 function App() {
   return (
@@ -42,14 +42,19 @@ function App() {
           <Route path="investigations/launch" element={<LaunchInvestigation />} />
           <Route path="tigers" element={<Tigers />} />
           <Route path="facilities" element={<Facilities />} />
+          <Route path="facilities/:id" element={<FacilityDetail />} />
           <Route path="verification" element={<Verification />} />
-          <Route path="tools" element={<InvestigationTools />} />
-          <Route path="templates" element={<Templates />} />
-          <Route path="saved-searches" element={<SavedSearches />} />
+          {/* Redirect obsolete routes to consolidated pages */}
+          <Route path="tools" element={<Navigate to="/investigations/launch" replace />} />
+          <Route path="model-testing" element={<Navigate to="/investigations/launch" replace />} />
+          <Route path="model-dashboard" element={<Navigate to="/dashboard" replace />} />
+          <Route path="templates" element={<Navigate to="/investigations" replace />} />
+          <Route path="saved-searches" element={<Navigate to="/investigations" replace />} />
+          <Route path="search" element={<SearchResults />} />
         </Route>
 
-        {/* Catch all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Catch all - 404 */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </ErrorBoundary>
   )

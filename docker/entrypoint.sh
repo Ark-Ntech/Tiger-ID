@@ -9,20 +9,13 @@ echo "🐅 Tiger ID - API Initialization"
 echo "======================================"
 echo ""
 
-# Wait for PostgreSQL to be ready
-echo "→ Waiting for PostgreSQL..."
-timeout=60
-counter=0
-until python -c "import psycopg2; psycopg2.connect('${DATABASE_URL}')" 2>/dev/null; do
-    if [ $counter -ge $timeout ]; then
-        echo "❌ PostgreSQL timeout after ${timeout}s"
-        exit 1
-    fi
-    echo "   PostgreSQL is unavailable - sleeping"
-    sleep 2
-    counter=$((counter + 2))
-done
-echo "✅ PostgreSQL is ready"
+# Set SQLite production mode (not PostgreSQL)
+export USE_SQLITE_DEMO=false
+export USE_POSTGRESQL=false
+export DATABASE_URL=sqlite:///data/production.db
+
+echo "→ Using SQLite production database"
+echo "   Database path: /app/data/production.db"
 
 # Check if Redis is ready (optional)
 echo ""
@@ -43,18 +36,11 @@ else
     echo "⚠️  Redis not configured - will use in-memory cache"
 fi
 
-# Run database migrations
+# Initialize SQLite database
 echo ""
-echo "→ Running database migrations..."
-cd /app/backend/database
-if alembic upgrade head 2>/dev/null; then
-    echo "✅ Migrations complete"
-else
-    echo "⚠️  Migrations failed, trying direct table creation..."
-    cd /app
-    python -c "from backend.database.connection import init_db; init_db()" 2>/dev/null || echo "⚠️  Table creation failed"
-fi
+echo "→ Initializing SQLite database..."
 cd /app
+python scripts/init_db.py || echo "⚠️  Database initialization failed"
 
 # Create test user
 echo ""
@@ -104,6 +90,40 @@ except Exception as e:
     print(f"   ⚠️  User setup failed: {e}")
     import traceback
     traceback.print_exc()
+EOFPYTHON
+
+# Populate database with production data (if database is empty)
+echo ""
+echo "→ Checking if database needs population..."
+python <<'EOFPYTHON'
+import sys
+sys.path.insert(0, '/app')
+
+from backend.database import get_db_session, Facility, Tiger
+from pathlib import Path
+
+try:
+    with get_db_session() as db:
+        facility_count = db.query(Facility).count()
+        tiger_count = db.query(Tiger).count()
+        
+        if facility_count == 0 or tiger_count == 0:
+            print("   → Database is empty, populating with production data...")
+            import subprocess
+            result = subprocess.run(
+                ['python', 'scripts/populate_production_db.py'],
+                cwd='/app',
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                print("   ✅ Database populated successfully")
+            else:
+                print(f"   ⚠️  Database population had warnings: {result.stderr[:200]}")
+        else:
+            print(f"   ℹ️  Database already has {facility_count} facilities and {tiger_count} tigers")
+except Exception as e:
+    print(f"   ⚠️  Could not check database: {e}")
 EOFPYTHON
 
 # Initialize models (non-blocking)

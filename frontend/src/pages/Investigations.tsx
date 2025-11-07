@@ -139,11 +139,22 @@ const Investigations = () => {
                         {investigation.tags.map((tag: string) => (
                           <span
                             key={tag}
-                            className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
+                            className={`px-2 py-1 text-gray-700 text-xs rounded ${
+                              tag === 'auto-generated' 
+                                ? 'bg-blue-100 text-blue-800' 
+                                : 'bg-gray-100'
+                            }`}
                           >
-                            {tag}
+                            {tag === 'auto-generated' ? '🤖 ' + tag : tag}
                           </span>
                         ))}
+                      </div>
+                    )}
+                    {investigation.related_tigers && investigation.related_tigers.length > 0 && (
+                      <div className="flex items-center space-x-2 mt-2">
+                        <span className="text-xs text-gray-500">
+                          🐅 {investigation.related_tigers.length} related tiger(s)
+                        </span>
                       </div>
                     )}
                   </div>

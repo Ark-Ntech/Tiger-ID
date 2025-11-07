@@ -373,12 +373,98 @@ class OrchestratorAgent:
             "location": user_inputs.get("location"),
             "facility": user_inputs.get("facility"),
             "tiger_id": user_inputs.get("tiger_id"),
-            "query": user_inputs.get("query", "")
+            "query": user_inputs.get("query", ""),
+            "selected_tools": user_inputs.get("selected_tools", [])  # Include selected tools
         }
         
-        # Use OmniVinci to understand query if available
-        # For now, simple parsing
-        logger.info("Parsed user inputs", parsed=parsed)
+        # Get available tools for OmniVinci if query is provided
+        selected_tool_names = user_inputs.get("selected_tools", [])
+        
+        if parsed.get("query"):
+            try:
+                from backend.mcp_servers import (
+                    FirecrawlMCPServer,
+                    DatabaseMCPServer,
+                    TigerIDMCPServer,
+                    YouTubeMCPServer,
+                    MetaMCPServer,
+                )
+                
+                # Get available tools from MCP servers
+                all_tools = []
+                
+                # If specific tools are selected, only load those
+                if selected_tool_names:
+                    logger.info(f"Loading selected tools: {selected_tool_names}")
+                    
+                    # Database tools
+                    if any("database" in t.lower() or "tiger" in t.lower() or "facility" in t.lower() for t in selected_tool_names):
+                        try:
+                            db_server = DatabaseMCPServer(db=self.db)
+                            db_tools = await db_server.list_tools()
+                            for tool in db_tools:
+                                if tool.get("name", "") in selected_tool_names:
+                                    all_tools.append({
+                                        "name": tool.get("name", ""),
+                                        "description": tool.get("description", ""),
+                                        "server": "database"
+                                    })
+                        except Exception as e:
+                            logger.warning(f"Could not load database tools: {e}")
+                    
+                    # Firecrawl tools
+                    if any("firecrawl" in t.lower() or "web" in t.lower() or "search" in t.lower() for t in selected_tool_names):
+                        try:
+                            firecrawl_server = FirecrawlMCPServer()
+                            firecrawl_tools = await firecrawl_server.list_tools()
+                            for tool in firecrawl_tools:
+                                if tool.get("name", "") in selected_tool_names:
+                                    all_tools.append({
+                                        "name": tool.get("name", ""),
+                                        "description": tool.get("description", ""),
+                                        "server": "firecrawl"
+                                    })
+                        except Exception as e:
+                            logger.warning(f"Could not load firecrawl tools: {e}")
+                else:
+                    # Load all available tools if none selected
+                    # Database tools
+                    try:
+                        db_server = DatabaseMCPServer(db=self.db)
+                        db_tools = await db_server.list_tools()
+                        for tool in db_tools:
+                            all_tools.append({
+                                "name": tool.get("name", ""),
+                                "description": tool.get("description", ""),
+                                "server": "database"
+                            })
+                    except Exception as e:
+                        logger.warning(f"Could not load database tools: {e}")
+                    
+                    # Firecrawl tools
+                    try:
+                        firecrawl_server = FirecrawlMCPServer()
+                        firecrawl_tools = await firecrawl_server.list_tools()
+                        for tool in firecrawl_tools:
+                            all_tools.append({
+                                "name": tool.get("name", ""),
+                                "description": tool.get("description", ""),
+                                "server": "firecrawl"
+                            })
+                    except Exception as e:
+                        logger.warning(f"Could not load firecrawl tools: {e}")
+                
+                # Store tools in parsed for OmniVinci to use
+                if all_tools:
+                    logger.info(f"Providing {len(all_tools)} tools to OmniVinci for query understanding")
+                    parsed["available_tools"] = all_tools
+                elif selected_tool_names:
+                    logger.warning(f"Selected tools {selected_tool_names} were not found or could not be loaded")
+                    
+            except Exception as e:
+                logger.warning(f"Could not get tools for OmniVinci: {e}", exc_info=True)
+        
+        logger.info(f"Parsed user inputs. Query: {parsed.get('query', '')[:50]}..., Selected tools: {len(selected_tool_names)}")
         
         return parsed
     
@@ -441,6 +527,29 @@ class OrchestratorAgent:
             investigation_id=investigation_id
         )
         research_results["external_apis"] = api_data
+        
+        # Use OmniVinci with tools if query is provided and tools are available
+        query = inputs.get("query", "")
+        available_tools = inputs.get("available_tools", [])
+        if query and available_tools and self.omnivinci_api_key:
+            try:
+                from backend.models.omnivinci import get_omnivinci_model
+                from pathlib import Path
+                import tempfile
+                
+                # For text queries, we can use OmniVinci's understanding
+                # Create a simple text file to simulate video input (OmniVinci is video-focused)
+                # In production, this would be actual video files
+                logger.info(f"Using OmniVinci with {len(available_tools)} tools to understand query: {query[:50]}...")
+                
+                # For now, just log that tools are available
+                # OmniVinci will receive tools in the prompt when processing videos
+                # For text-only queries, we'll enhance the prompt with tool information
+                enhanced_query = f"{query}\n\nAvailable tools: {', '.join([t.get('name', '') for t in available_tools[:5]])}"
+                logger.info(f"Enhanced query with tools: {enhanced_query[:100]}...")
+                
+            except Exception as e:
+                logger.warning(f"Could not use OmniVinci with tools: {e}")
         
         # Web intelligence gathering
         web_intelligence = {}

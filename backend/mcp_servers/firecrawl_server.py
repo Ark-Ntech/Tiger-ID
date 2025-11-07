@@ -53,7 +53,7 @@ class FirecrawlMCPServer(MCPServerBase):
             ),
             "firecrawl_scrape": MCPTool(
                 name="firecrawl_scrape",
-                description="Scrape a single web page",
+                description="Scrape a single web page with full Firecrawl capabilities (actions, wait_for, mobile, etc.)",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -65,6 +65,22 @@ class FirecrawlMCPServer(MCPServerBase):
                             "type": "boolean",
                             "description": "Extract structured data using LLM",
                             "default": True
+                        },
+                        "wait_for": {
+                            "type": "integer",
+                            "description": "Wait time in milliseconds for dynamic content to load",
+                            "default": None
+                        },
+                        "actions": {
+                            "type": "array",
+                            "description": "List of actions to perform before scraping (click, scroll, wait, etc.)",
+                            "items": {"type": "object"},
+                            "default": None
+                        },
+                        "mobile": {
+                            "type": "boolean",
+                            "description": "Use mobile user agent",
+                            "default": False
                         }
                     },
                     "required": ["url"]
@@ -103,7 +119,11 @@ class FirecrawlMCPServer(MCPServerBase):
                         },
                         "schema": {
                             "type": "object",
-                            "description": "Schema for extraction"
+                            "description": "JSON schema for extraction"
+                        },
+                        "prompt": {
+                            "type": "string",
+                            "description": "Natural language prompt for extraction"
                         }
                     },
                     "required": ["url"]
@@ -132,31 +152,137 @@ class FirecrawlMCPServer(MCPServerBase):
         return []
     
     async def _handle_search(self, query: str, limit: int = 10) -> Dict[str, Any]:
-        """Handle web search using web search service"""
+        """
+        Handle web search using Firecrawl's native search method if available,
+        otherwise fallback to web search service
+        """
+        if not self.client:
+            logger.warning("Firecrawl API key not configured - using fallback")
+            # Fallback to web search service
+            try:
+                from backend.services.web_search_service import get_web_search_service
+                search_service = get_web_search_service()
+                result = await search_service.search(query, limit=limit, provider="serper")
+                return result
+            except Exception as e:
+                logger.error("Search fallback failed", query=query, error=str(e))
+                return {"error": str(e), "results": [], "query": query, "count": 0}
+        
         try:
-            from backend.services.web_search_service import get_web_search_service
-            
-            search_service = get_web_search_service()
-            result = await search_service.search(query, limit=limit, provider="firecrawl")
-            
-            logger.info("Web search completed", query=query[:50], count=result.get("count", 0))
-            
-            return result
-        except ImportError:
-            logger.warning("Web search service not available, using fallback")
-            # Fallback to empty results if service not available
-            return {
-                "results": [],
-                "query": query,
-                "count": 0,
-                "error": "Web search service not available"
-            }
+            # Try Firecrawl's native search method if available
+            if hasattr(self.client, 'search'):
+                logger.info(f"Using Firecrawl native search for: {query[:50]}")
+                search_result = self.client.search(query, limit=limit)
+                
+                # Handle search result (may be async job or immediate result)
+                if hasattr(search_result, 'job_id'):
+                    # Async job - poll for status
+                    job_id = search_result.job_id
+                    import asyncio
+                    max_polls = 20
+                    poll_interval = 1
+                    
+                    for poll_count in range(max_polls):
+                        status = self.client.get_batch_scrape_status(job_id) if hasattr(self.client, 'get_batch_scrape_status') else None
+                        if status and (hasattr(status, 'status') and status.status in ["completed", "done"] or isinstance(status, dict) and status.get("status") in ["completed", "done"]):
+                            # Get results
+                            if hasattr(status, 'data'):
+                                results_data = status.data
+                            elif isinstance(status, dict):
+                                results_data = status.get("data", [])
+                            else:
+                                results_data = []
+                            
+                            results = []
+                            for item in results_data[:limit]:
+                                if hasattr(item, 'markdown'):
+                                    results.append({
+                                        "title": getattr(item, 'title', ''),
+                                        "url": getattr(item, 'url', ''),
+                                        "snippet": getattr(item, 'markdown', '')[:200]
+                                    })
+                                else:
+                                    results.append({
+                                        "title": item.get("title", ""),
+                                        "url": item.get("url", ""),
+                                        "snippet": item.get("markdown", "")[:200]
+                                    })
+                            
+                            return {
+                                "results": results,
+                                "query": query,
+                                "count": len(results),
+                                "provider": "firecrawl"
+                            }
+                        await asyncio.sleep(poll_interval)
+                    
+                    return {"error": "Search job timed out", "results": [], "query": query, "count": 0}
+                else:
+                    # Immediate result
+                    if hasattr(search_result, 'data'):
+                        results_data = search_result.data
+                    else:
+                        results_data = search_result.get("data", []) if isinstance(search_result, dict) else []
+                    
+                    results = []
+                    for item in results_data[:limit]:
+                        if hasattr(item, 'markdown'):
+                            results.append({
+                                "title": getattr(item, 'title', ''),
+                                "url": getattr(item, 'url', ''),
+                                "snippet": getattr(item, 'markdown', '')[:200]
+                            })
+                        else:
+                            results.append({
+                                "title": item.get("title", ""),
+                                "url": item.get("url", ""),
+                                "snippet": item.get("markdown", "")[:200]
+                            })
+                    
+                    return {
+                        "results": results,
+                        "query": query,
+                        "count": len(results),
+                        "provider": "firecrawl"
+                    }
+            else:
+                # Fallback to web search service
+                logger.info("Firecrawl search method not available, using web search service")
+                from backend.services.web_search_service import get_web_search_service
+                search_service = get_web_search_service()
+                result = await search_service.search(query, limit=limit, provider="serper")
+                return result
+                
         except Exception as e:
             logger.error("Search failed", query=query, error=str(e), exc_info=True)
-            return {"error": str(e), "results": [], "query": query, "count": 0}
+            # Fallback to web search service
+            try:
+                from backend.services.web_search_service import get_web_search_service
+                search_service = get_web_search_service()
+                result = await search_service.search(query, limit=limit, provider="serper")
+                return result
+            except Exception as fallback_error:
+                logger.error("Search fallback also failed", error=str(fallback_error))
+                return {"error": str(e), "results": [], "query": query, "count": 0}
     
-    async def _handle_scrape(self, url: str, extract: bool = True) -> Dict[str, Any]:
-        """Handle page scraping"""
+    async def _handle_scrape(
+        self, 
+        url: str, 
+        extract: bool = True,
+        wait_for: Optional[int] = None,
+        actions: Optional[List[Dict[str, Any]]] = None,
+        mobile: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Handle page scraping with full Firecrawl capabilities
+        
+        Args:
+            url: URL to scrape
+            extract: Extract structured data using LLM
+            wait_for: Wait time in milliseconds for dynamic content
+            actions: List of actions to perform before scraping (click, scroll, etc.)
+            mobile: Use mobile user agent
+        """
         if not self.client:
             logger.warning("Firecrawl API key not configured - returning empty result")
             return {
@@ -168,29 +294,55 @@ class FirecrawlMCPServer(MCPServerBase):
             }
         
         try:
-            result = self.client.scrape_url(url, params={
+            # Build scrape parameters with all available options
+            scrape_params = {
                 "formats": ["markdown", "html"],
-                "onlyMainContent": True
-            })
+                "only_main_content": True
+            }
+            
+            if wait_for:
+                scrape_params["wait_for"] = wait_for
+            if actions:
+                scrape_params["actions"] = actions
+            if mobile:
+                scrape_params["mobile"] = True
+            
+            result = self.client.scrape(url, **scrape_params)
+            
+            # Handle Document object (Firecrawl SDK v4+ returns Document objects)
+            if hasattr(result, 'markdown'):
+                markdown_content = result.markdown
+                html_content = result.html if hasattr(result, 'html') else ""
+                metadata = result.metadata if hasattr(result, 'metadata') else {}
+            else:
+                # Fallback for dict responses
+                markdown_content = result.get("markdown", "")
+                html_content = result.get("html", "")
+                metadata = result.get("metadata", {})
             
             extracted_data = None
             if extract:
                 # Use LLM extraction if available
-                extracted_data = result.get("markdown", "")[:1000]  # Limit for now
+                extracted_data = markdown_content[:1000] if markdown_content else None
             
             return {
                 "url": url,
-                "content": result.get("markdown", ""),
-                "html": result.get("html", ""),
+                "content": markdown_content,
+                "html": html_content,
                 "extracted": extracted_data,
-                "title": result.get("metadata", {}).get("title", "")
+                "title": metadata.get("title", "") if isinstance(metadata, dict) else getattr(metadata, "title", "")
             }
         except Exception as e:
-            logger.error("Scrape failed", url=url, error=str(e))
+            logger.error("Scrape failed", url=url, error=str(e), exc_info=True)
             return {"error": str(e), "url": url}
     
     async def _handle_crawl(self, url: str, limit: int = 10) -> Dict[str, Any]:
-        """Handle website crawling"""
+        """
+        Handle website crawling using Firecrawl's async job system
+        
+        Note: Firecrawl's crawl() returns a CrawlJob object that needs to be polled for status.
+        This implementation starts the crawl and polls for completion.
+        """
         if not self.client:
             logger.warning("Firecrawl API key not configured - returning empty result")
             return {
@@ -201,30 +353,163 @@ class FirecrawlMCPServer(MCPServerBase):
             }
         
         try:
-            result = self.client.crawl_url(url, params={
-                "limit": limit,
-                "formats": ["markdown"]
-            })
+            # Use start_crawl for async job or crawl for synchronous (with polling)
+            from firecrawl.v2.types import ScrapeOptions
             
-            pages = []
-            for page in result.get("data", [])[:limit]:
-                pages.append({
-                    "url": page.get("url"),
-                    "content": page.get("markdown", "")[:500],  # Limit content
-                    "title": page.get("metadata", {}).get("title", "")
-                })
+            scrape_options = ScrapeOptions(
+                formats=["markdown", "html"],
+                only_main_content=True
+            )
             
-            return {
-                "base_url": url,
-                "pages": pages,
-                "count": len(pages)
-            }
+            # Use start_crawl if available (returns CrawlResponse with job_id)
+            # Otherwise use crawl (which handles polling internally)
+            if hasattr(self.client, 'start_crawl'):
+                logger.info(f"Starting crawl job for {url}")
+                crawl_response = self.client.start_crawl(
+                    url=url,
+                    limit=limit,
+                    scrape_options=scrape_options
+                )
+                
+                # Get job ID from response
+                job_id = crawl_response.job_id if hasattr(crawl_response, 'job_id') else (crawl_response.get("job_id") if isinstance(crawl_response, dict) else None)
+                
+                if not job_id:
+                    logger.error("Crawl job started but no job_id returned")
+                    return {"error": "Crawl job failed to start", "base_url": url}
+                
+                logger.info(f"Crawl job started: {job_id}, polling for status...")
+                
+                # Poll for crawl status (with timeout)
+                import asyncio
+                max_polls = 30  # Maximum number of polls
+                poll_interval = 2  # Seconds between polls
+                
+                for poll_count in range(max_polls):
+                    status = self.client.get_crawl_status(job_id)
+                    
+                    # Check if job is complete
+                    if hasattr(status, 'status'):
+                        job_status = status.status
+                    elif isinstance(status, dict):
+                        job_status = status.get("status", "unknown")
+                    else:
+                        job_status = str(status)
+                    
+                    if job_status in ["completed", "done", "success"]:
+                        # Get crawl results
+                        if hasattr(status, 'data'):
+                            pages_data = status.data
+                        elif isinstance(status, dict):
+                            pages_data = status.get("data", [])
+                        else:
+                            pages_data = []
+                        
+                        pages = []
+                        for page in pages_data[:limit]:
+                            if hasattr(page, 'markdown'):
+                                page_content = page.markdown
+                                page_url = page.url if hasattr(page, 'url') else ""
+                                page_metadata = page.metadata if hasattr(page, 'metadata') else {}
+                            else:
+                                page_content = page.get("markdown", "")
+                                page_url = page.get("url", "")
+                                page_metadata = page.get("metadata", {})
+                            
+                            pages.append({
+                                "url": page_url,
+                                "content": page_content[:500] if page_content else "",  # Limit content
+                                "title": page_metadata.get("title", "") if isinstance(page_metadata, dict) else getattr(page_metadata, "title", "")
+                            })
+                        
+                        logger.info(f"Crawl completed: {len(pages)} pages")
+                        return {
+                            "base_url": url,
+                            "pages": pages,
+                            "count": len(pages),
+                            "job_id": job_id
+                        }
+                    elif job_status in ["failed", "error"]:
+                        error_msg = "Crawl job failed"
+                        if hasattr(status, 'error'):
+                            error_msg = status.error
+                        elif isinstance(status, dict):
+                            error_msg = status.get("error", error_msg)
+                        logger.error(f"Crawl job failed: {error_msg}")
+                        return {"error": error_msg, "base_url": url, "job_id": job_id}
+                    
+                    # Wait before next poll
+                    await asyncio.sleep(poll_interval)
+                
+                # Timeout - return partial results if available
+                logger.warning(f"Crawl job timed out after {max_polls * poll_interval} seconds")
+                return {
+                    "base_url": url,
+                    "pages": [],
+                    "count": 0,
+                    "job_id": job_id,
+                    "warning": f"Crawl job timed out. Check status with job_id: {job_id}"
+                }
+            else:
+                # Use crawl method which handles polling internally
+                logger.info(f"Using crawl method for {url} (with internal polling)")
+                crawl_job = self.client.crawl(
+                    url=url,
+                    limit=limit,
+                    scrape_options=scrape_options,
+                    poll_interval=2,
+                    timeout=60
+                )
+                
+                # Get job ID
+                job_id = crawl_job.job_id if hasattr(crawl_job, 'job_id') else None
+                
+                # The crawl method should handle polling internally, but we'll check status
+                if hasattr(crawl_job, 'data'):
+                    pages_data = crawl_job.data
+                elif hasattr(crawl_job, 'pages'):
+                    pages_data = crawl_job.pages
+                else:
+                    pages_data = []
+                
+                pages = []
+                for page in pages_data[:limit]:
+                    if hasattr(page, 'markdown'):
+                        page_content = page.markdown
+                        page_url = page.url if hasattr(page, 'url') else ""
+                        page_metadata = page.metadata if hasattr(page, 'metadata') else {}
+                    else:
+                        page_content = page.get("markdown", "")
+                        page_url = page.get("url", "")
+                        page_metadata = page.get("metadata", {})
+                    
+                    pages.append({
+                        "url": page_url,
+                        "content": page_content[:500] if page_content else "",
+                        "title": page_metadata.get("title", "") if isinstance(page_metadata, dict) else getattr(page_metadata, "title", "")
+                    })
+                
+                logger.info(f"Crawl completed: {len(pages)} pages")
+                return {
+                    "base_url": url,
+                    "pages": pages,
+                    "count": len(pages),
+                    "job_id": job_id
+                }
+            
         except Exception as e:
-            logger.error("Crawl failed", url=url, error=str(e))
+            logger.error("Crawl failed", url=url, error=str(e), exc_info=True)
             return {"error": str(e), "base_url": url}
     
-    async def _handle_extract(self, url: str, schema: Optional[Dict] = None) -> Dict[str, Any]:
-        """Handle structured data extraction"""
+    async def _handle_extract(self, url: str, schema: Optional[Dict] = None, prompt: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Handle structured data extraction using Firecrawl's extract method
+        
+        Args:
+            url: URL to extract from
+            schema: JSON schema for extraction (optional)
+            prompt: Natural language prompt for extraction (optional)
+        """
         if not self.client:
             logger.warning("Firecrawl API key not configured - returning empty result")
             return {
@@ -235,16 +520,72 @@ class FirecrawlMCPServer(MCPServerBase):
             }
         
         try:
-            # Scrape first
+            # Use Firecrawl's extract method if available
+            if hasattr(self.client, 'extract'):
+                # Start extract job
+                extract_job = self.client.start_extract(
+                    url=url,
+                    schema=schema,
+                    prompt=prompt
+                )
+                
+                # Get job ID
+                job_id = extract_job.job_id if hasattr(extract_job, 'job_id') else None
+                
+                if job_id:
+                    # Poll for extract status
+                    import asyncio
+                    max_polls = 20
+                    poll_interval = 1
+                    
+                    for poll_count in range(max_polls):
+                        status = self.client.get_extract_status(job_id)
+                        
+                        if hasattr(status, 'status'):
+                            job_status = status.status
+                        elif isinstance(status, dict):
+                            job_status = status.get("status", "unknown")
+                        else:
+                            job_status = str(status)
+                        
+                        if job_status in ["completed", "done", "success"]:
+                            # Get extracted data
+                            if hasattr(status, 'data'):
+                                extracted_data = status.data
+                            elif isinstance(status, dict):
+                                extracted_data = status.get("data", {})
+                            else:
+                                extracted_data = {}
+                            
+                            logger.info(f"Extract completed for {url}")
+                            return {
+                                "url": url,
+                                "extracted": extracted_data,
+                                "schema": schema,
+                                "job_id": job_id
+                            }
+                        elif job_status in ["failed", "error"]:
+                            error_msg = "Extract job failed"
+                            if hasattr(status, 'error'):
+                                error_msg = status.error
+                            elif isinstance(status, dict):
+                                error_msg = status.get("error", error_msg)
+                            logger.error(f"Extract job failed: {error_msg}")
+                            # Fallback to scrape
+                            break
+                        
+                        await asyncio.sleep(poll_interval)
+            
+            # Fallback to scrape if extract fails or is not available
+            logger.info(f"Using scrape fallback for extraction from {url}")
             scrape_result = await self._handle_scrape(url, extract=False)
             
-            # In production, use Firecrawl's LLM extraction
-            # For now, return scraped content
             return {
                 "url": url,
-                "extracted": scrape_result.get("content", "")[:1000],
-                "schema": schema
+                "extracted": scrape_result.get("content", "")[:1000] if scrape_result.get("content") else "",
+                "schema": schema,
+                "method": "scrape_fallback"
             }
         except Exception as e:
-            logger.error("Extract failed", url=url, error=str(e))
+            logger.error("Extract failed", url=url, error=str(e), exc_info=True)
             return {"error": str(e), "url": url}

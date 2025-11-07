@@ -163,21 +163,44 @@ def store_embedding(
     Returns:
         True if successful
     """
-    embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+    import os
+    import json
     
-    query = text("""
-        UPDATE tiger_images
-        SET embedding = :embedding::vector
-        WHERE image_id = :image_id
-    """)
+    # Check if using SQLite (embeddings stored as JSON) or PostgreSQL (vector type)
+    USE_POSTGRESQL = os.getenv("USE_POSTGRESQL", "false").lower() == "true"
     
-    session.execute(
-        query,
-        {
-            "image_id": image_id,
-            "embedding": embedding_str
-        }
-    )
+    if USE_POSTGRESQL:
+        # PostgreSQL: use vector type
+        embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+        query = text("""
+            UPDATE tiger_images
+            SET embedding = :embedding::vector
+            WHERE image_id = :image_id
+        """)
+        session.execute(
+            query,
+            {
+                "image_id": image_id,
+                "embedding": embedding_str
+            }
+        )
+    else:
+        # SQLite: store as JSON array
+        embedding_list = embedding.tolist()
+        embedding_json = json.dumps(embedding_list)
+        query = text("""
+            UPDATE tiger_images
+            SET embedding = :embedding
+            WHERE image_id = :image_id
+        """)
+        session.execute(
+            query,
+            {
+                "image_id": image_id,
+                "embedding": embedding_json
+            }
+        )
+    
     session.commit()
     
     return True

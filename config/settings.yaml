@@ -6,10 +6,14 @@ app:
   secret_key: ${SECRET_KEY}
   
 database:
-  url: ${DATABASE_URL}
+  url: ${DATABASE_URL:-sqlite:///data/production.db}
   pool_size: 10
   max_overflow: 20
   echo: ${DEBUG:-false}
+  # SQLite configuration
+  sqlite_path: ${SQLITE_DB_PATH:-data/production.db}
+  use_sqlite_demo: ${USE_SQLITE_DEMO:-false}
+  use_postgresql: ${USE_POSTGRESQL:-false}
 
 redis:
   url: ${REDIS_URL}
@@ -43,15 +47,24 @@ omnivinci:
   model_version: ${OMNIVINCI_MODEL_VERSION:-latest}
   max_tokens: 4096
   temperature: 0.7
-  # Local model configuration (model weights need to be downloaded from HuggingFace)
-  # Run: huggingface-cli download nvidia/omnivinci --local-dir ./data/models/omnivinci/omnivinci --local-dir-use-symlinks False
-  use_local_model: ${OMNIVINCI_USE_LOCAL:-false}
-  local_model_path: ${OMNIVINCI_MODEL_PATH:-./data/models/omnivinci/omnivinci}
-  torch_dtype: ${OMNIVINCI_TORCH_DTYPE:-torch.float16}
-  device_map: ${OMNIVINCI_DEVICE_MAP:-auto}
   num_video_frames: ${OMNIVINCI_NUM_VIDEO_FRAMES:-128}
   load_audio_in_video: ${OMNIVINCI_LOAD_AUDIO:-true}
   audio_length: ${OMNIVINCI_AUDIO_LENGTH:-max_3600}
+
+modal:
+  # Modal configuration for serverless GPU compute
+  enabled: ${MODAL_ENABLED:-true}
+  app_name: "tiger-id-models"
+  max_retries: ${MODAL_MAX_RETRIES:-3}
+  retry_delay: ${MODAL_RETRY_DELAY:-1.0}
+  timeout: ${MODAL_TIMEOUT:-120}
+  queue_max_size: ${MODAL_QUEUE_MAX_SIZE:-100}
+  # Fallback behavior when Modal unavailable
+  fallback_to_queue: ${MODAL_FALLBACK_TO_QUEUE:-true}
+  # Environment variables to pass to Modal
+  env_vars:
+    OMNIVINCI_API_KEY: ${OMNIVINCI_API_KEY}
+    OMNIVINCI_API_URL: ${OMNIVINCI_API_URL:-https://api.nvidia.com/v1/models/omnivinci}
   
 firecrawl:
   api_key: ${FIRECRAWL_API_KEY}
@@ -86,6 +99,9 @@ models:
     enabled: true
   device: ${MODEL_DEVICE:-cuda}
   batch_size: ${BATCH_SIZE:-32}
+  preload_on_startup: ${MODEL_PRELOAD_ON_STARTUP:-false}
+  cache_ttl: ${MODEL_CACHE_TTL:-3600}
+  max_batch_size: ${MAX_BATCH_SIZE:-50}
   
 datasets:
   atrw:
@@ -96,11 +112,22 @@ datasets:
     path: ${WILDLIFE_DATASETS_PATH:-./data/datasets/wildlife-datasets/}
   individual_animal_reid:
     path: ${INDIVIDUAL_ANIMAL_REID_PATH:-./data/datasets/individual-animal-reid/}
+  # TPC Facilities Excel file
+  tpc_facilities_excel:
+    path: ${TPC_FACILITIES_EXCEL_PATH:-./data/datasets/2025_10_31 TPC_Tigers non-accredited facilities.xlsx}
   
 monitoring:
   prometheus_enabled: ${PROMETHEUS_ENABLED:-true}
   prometheus_port: ${PROMETHEUS_PORT:-9090}
   log_level: ${LOG_LEVEL:-INFO}
+
+auto_investigation:
+  enabled: ${AUTO_INVESTIGATION_ENABLED:-false}
+  min_confidence: ${AUTO_INVESTIGATION_MIN_CONFIDENCE:-0.8}
+  priority_mapping:
+    high: 0.95
+    medium: 0.8
+    low: 0.7
 
 langgraph:
   enabled: ${USE_LANGGRAPH:-false}

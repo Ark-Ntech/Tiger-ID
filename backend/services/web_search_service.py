@@ -151,27 +151,62 @@ class WebSearchService:
                 "provider": provider
             }
     
-    async def _search_serper(self, query: str, limit: int = 10) -> Dict[str, Any]:
-        """Search using Serper API (Google Search)"""
+    async def _search_serper(self, query: str, limit: int = 10, location: Optional[str] = None, gl: Optional[str] = None, hl: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Search using Serper API (Google Search)
+        
+        Args:
+            query: Search query
+            limit: Maximum number of results (max 20)
+            location: Geographic location for localized results (e.g., "Austin, Texas")
+            gl: Country code (e.g., "us", "uk")
+            hl: Language code (e.g., "en", "es")
+        """
         api_key = self.web_search_config.serper_api_key
         if not api_key:
             raise ValueError("Serper API key not configured")
         
+        # Build request payload with all available parameters
+        payload = {
+            "q": query,
+            "num": min(limit, 20)  # Serper max is 20
+        }
+        
+        # Add optional parameters
+        if location:
+            payload["location"] = location
+        if gl:
+            payload["gl"] = gl
+        if hl:
+            payload["hl"] = hl
+        
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://google.serper.dev/search",
-                headers={
-                    "X-API-KEY": api_key,
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "q": query,
-                    "num": min(limit, 20)  # Serper max is 20
-                }
-            )
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response = await client.post(
+                    "https://google.serper.dev/search",
+                    headers={
+                        "X-API-KEY": api_key,
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+                
+                # Check for 403 Forbidden - might be invalid API key or rate limit
+                if response.status_code == 403:
+                    error_text = response.text
+                    logger.error(f"Serper API 403 Forbidden. Response: {error_text[:200]}")
+                    raise ValueError(f"Serper API access denied (403). Check API key validity and account status. Response: {error_text[:200]}")
+                
+                response.raise_for_status()
+                data = response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 403:
+                    error_text = e.response.text if e.response else "Unknown error"
+                    logger.error(f"Serper API 403 Forbidden. Response: {error_text[:200]}")
+                    raise ValueError(f"Serper API access denied (403). Check API key validity and account status. Response: {error_text[:200]}")
+                raise
             
+            # Extract organic results
             results = []
             for item in data.get("organic", [])[:limit]:
                 results.append({
@@ -182,12 +217,23 @@ class WebSearchService:
                     "date": item.get("date", "")
                 })
             
+            # Extract additional result types
+            answer_box = data.get("answerBox")
+            knowledge_graph = data.get("knowledgeGraph")
+            people_also_ask = data.get("peopleAlsoAsk", [])
+            related_questions = data.get("relatedQuestions", [])
+            
             return {
                 "results": results,
                 "query": query,
                 "count": len(results),
                 "provider": "serper",
-                "total_results": data.get("searchInformation", {}).get("totalResults", "0")
+                "total_results": data.get("searchInformation", {}).get("totalResults", "0"),
+                # Include additional result types
+                "answer_box": answer_box if answer_box else None,
+                "knowledge_graph": knowledge_graph if knowledge_graph else None,
+                "people_also_ask": people_also_ask[:5] if people_also_ask else [],  # Limit to 5
+                "related_questions": related_questions[:5] if related_questions else []  # Limit to 5
             }
     
     async def _search_tavily(self, query: str, limit: int = 10) -> Dict[str, Any]:

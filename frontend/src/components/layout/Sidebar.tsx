@@ -6,9 +6,6 @@ import {
   ShieldCheckIcon,
   BuildingOfficeIcon,
   ChartBarIcon,
-  DocumentTextIcon,
-  BookmarkIcon,
-  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline'
 import { cn } from '../../utils/cn'
 
@@ -20,9 +17,6 @@ const navigation = [
   { name: 'Tigers', to: '/tigers', icon: ShieldCheckIcon },
   { name: 'Facilities', to: '/facilities', icon: BuildingOfficeIcon },
   { name: 'Verification', to: '/verification', icon: ShieldCheckIcon },
-  { name: 'Investigation Tools', to: '/tools', icon: WrenchScrewdriverIcon },
-  { name: 'Templates', to: '/templates', icon: DocumentTextIcon },
-  { name: 'Saved Searches', to: '/saved-searches', icon: BookmarkIcon },
 ]
 
 const Sidebar = () => {

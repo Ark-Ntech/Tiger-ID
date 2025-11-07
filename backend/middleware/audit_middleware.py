@@ -9,6 +9,7 @@ from uuid import UUID
 from backend.database import get_db_session
 from backend.services.audit_service import get_audit_service
 from backend.utils.logging import get_logger
+import os
 
 logger = get_logger(__name__)
 
@@ -50,37 +51,74 @@ class AuditMiddleware(BaseHTTPMiddleware):
             
             # Log audit entry
             try:
-                with get_db_session() as session:
-                    audit_service = get_audit_service(session)
-                    
-                    # Extract resource info from path
-                    resource_type = None
-                    resource_id = None
-                    
-                    path_parts = request.url.path.strip("/").split("/")
-                    if len(path_parts) >= 2:
-                        resource_type = path_parts[-2] if len(path_parts) >= 2 else None
-                        try:
-                            resource_id = UUID(path_parts[-1])
-                        except (ValueError, IndexError):
-                            resource_id = None
-                    
-                    audit_service.log_action(
-                        action_type=action_type,
-                        user_id=user_id,
-                        resource_type=resource_type,
-                        resource_id=resource_id,
-                        action_details={
-                            "method": request.method,
-                            "path": request.url.path,
-                            "status_code": response.status_code,
-                            "duration_ms": (time.time() - start_time) * 1000
-                        },
-                        ip_address=ip_address,
-                        user_agent=user_agent,
-                        status=status,
-                        error_message=error_message
-                    )
+                # Handle both context manager (PostgreSQL) and generator (SQLite) cases
+                if os.getenv("USE_POSTGRESQL", "false").lower() == "true":
+                    # PostgreSQL mode - get_db_session is a context manager
+                    with get_db_session() as session:
+                        audit_service = get_audit_service(session)
+                        
+                        # Extract resource info from path
+                        resource_type = None
+                        resource_id = None
+                        
+                        path_parts = request.url.path.strip("/").split("/")
+                        if len(path_parts) >= 2:
+                            resource_type = path_parts[-2] if len(path_parts) >= 2 else None
+                            try:
+                                resource_id = UUID(path_parts[-1])
+                            except (ValueError, IndexError):
+                                resource_id = None
+                        
+                        audit_service.log_action(
+                            action_type=action_type,
+                            user_id=user_id,
+                            resource_type=resource_type,
+                            resource_id=resource_id,
+                            action_details={
+                                "method": request.method,
+                                "path": request.url.path,
+                                "status_code": response.status_code,
+                                "duration_ms": (time.time() - start_time) * 1000
+                            },
+                            ip_address=ip_address,
+                            user_agent=user_agent,
+                            status=status,
+                            error_message=error_message
+                        )
+                else:
+                    # SQLite mode - use get_sqlite_session context manager
+                    from backend.database.sqlite_connection import get_sqlite_session
+                    with get_sqlite_session() as session:
+                        audit_service = get_audit_service(session)
+                        
+                        # Extract resource info from path
+                        resource_type = None
+                        resource_id = None
+                        
+                        path_parts = request.url.path.strip("/").split("/")
+                        if len(path_parts) >= 2:
+                            resource_type = path_parts[-2] if len(path_parts) >= 2 else None
+                            try:
+                                resource_id = UUID(path_parts[-1])
+                            except (ValueError, IndexError):
+                                resource_id = None
+                        
+                        audit_service.log_action(
+                            action_type=action_type,
+                            user_id=user_id,
+                            resource_type=resource_type,
+                            resource_id=resource_id,
+                            action_details={
+                                "method": request.method,
+                                "path": request.url.path,
+                                "status_code": response.status_code,
+                                "duration_ms": (time.time() - start_time) * 1000
+                            },
+                            ip_address=ip_address,
+                            user_agent=user_agent,
+                            status=status,
+                            error_message=error_message
+                        )
             except Exception as audit_error:
                 logger.error(f"Failed to log audit entry: {audit_error}", exc_info=True)
             
@@ -92,23 +130,43 @@ class AuditMiddleware(BaseHTTPMiddleware):
             
             # Log error
             try:
-                with get_db_session() as session:
-                    audit_service = get_audit_service(session)
-                    audit_service.log_action(
-                        action_type=action_type,
-                        user_id=user_id,
-                        resource_type=None,
-                        resource_id=None,
-                        action_details={
-                            "method": request.method,
-                            "path": request.url.path,
-                            "error": str(e)
-                        },
-                        ip_address=ip_address,
-                        user_agent=user_agent,
-                        status=status,
-                        error_message=error_message
-                    )
+                if os.getenv("USE_POSTGRESQL", "false").lower() == "true":
+                    with get_db_session() as session:
+                        audit_service = get_audit_service(session)
+                        audit_service.log_action(
+                            action_type=action_type,
+                            user_id=user_id,
+                            resource_type=None,
+                            resource_id=None,
+                            action_details={
+                                "method": request.method,
+                                "path": request.url.path,
+                                "error": str(e)
+                            },
+                            ip_address=ip_address,
+                            user_agent=user_agent,
+                            status=status,
+                            error_message=error_message
+                        )
+                else:
+                    from backend.database.sqlite_connection import get_sqlite_session
+                    with get_sqlite_session() as session:
+                        audit_service = get_audit_service(session)
+                        audit_service.log_action(
+                            action_type=action_type,
+                            user_id=user_id,
+                            resource_type=None,
+                            resource_id=None,
+                            action_details={
+                                "method": request.method,
+                                "path": request.url.path,
+                                "error": str(e)
+                            },
+                            ip_address=ip_address,
+                            user_agent=user_agent,
+                            status=status,
+                            error_message=error_message
+                        )
             except Exception as audit_error:
                 logger.error(f"Failed to log audit entry for error: {audit_error}", exc_info=True)
             

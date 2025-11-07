@@ -104,6 +104,11 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - FRONTEND_URL=http://localhost:5173
+      # Production settings
+      - AUTO_INVESTIGATION_ENABLED=${AUTO_INVESTIGATION_ENABLED:-false}
+      - MODEL_PRELOAD_ON_STARTUP=${MODEL_PRELOAD_ON_STARTUP:-false}
+      - MODEL_CACHE_TTL=${MODEL_CACHE_TTL:-3600}
+      - MAX_BATCH_SIZE=${MAX_BATCH_SIZE:-50}
     ports:
       - "8000:8000"
     volumes:
@@ -119,6 +124,15 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
 
   frontend:
     build:

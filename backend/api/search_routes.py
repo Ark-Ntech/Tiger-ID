@@ -9,6 +9,7 @@ from backend.auth.auth import get_current_user
 from backend.database import get_db, User
 from backend.services.global_search_service import get_global_search_service
 from backend.utils.logging import get_logger
+from backend.utils.response_models import SuccessResponse
 
 logger = get_logger(__name__)
 
@@ -39,5 +40,8 @@ async def global_search(
         user_id=current_user.user_id
     )
     
-    return results
+    return SuccessResponse(
+        message=f"Found {results['total_results']} results",
+        data=results
+    )
 
