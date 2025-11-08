@@ -11,8 +11,12 @@ import Investigations from './pages/Investigations'
 import InvestigationWorkspace from './pages/InvestigationWorkspace'
 import LaunchInvestigation from './pages/LaunchInvestigation'
 import Tigers from './pages/Tigers'
+import TigerDetail from './pages/TigerDetail'
 import Facilities from './pages/Facilities'
 import FacilityDetail from './pages/FacilityDetail'
+import ModelWeights from './pages/ModelWeights'
+import FineTuning from './pages/FineTuning'
+import DatasetManagement from './pages/DatasetManagement'
 import Verification from './pages/Verification'
 import PasswordReset from './pages/PasswordReset'
 import SearchResults from './pages/SearchResults'
@@ -39,10 +43,14 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="investigations" element={<Investigations />} />
           <Route path="investigations/:id" element={<InvestigationWorkspace />} />
-          <Route path="investigations/launch" element={<LaunchInvestigation />} />
+          <Route path="investigations/launch" element={<Navigate to="/investigations?tab=1" replace />} />
           <Route path="tigers" element={<Tigers />} />
+          <Route path="tigers/:id" element={<TigerDetail />} />
           <Route path="facilities" element={<Facilities />} />
           <Route path="facilities/:id" element={<FacilityDetail />} />
+          <Route path="model-weights" element={<ModelWeights />} />
+          <Route path="finetuning" element={<FineTuning />} />
+          <Route path="dataset-management" element={<DatasetManagement />} />
           <Route path="verification" element={<Verification />} />
           {/* Redirect obsolete routes to consolidated pages */}
           <Route path="tools" element={<Navigate to="/investigations/launch" replace />} />

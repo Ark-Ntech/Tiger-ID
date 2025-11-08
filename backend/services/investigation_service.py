@@ -230,6 +230,83 @@ class InvestigationService:
             Evidence.investigation_id == investigation_id
         ).order_by(Evidence.created_at).all()
     
+    def _save_investigation_state(
+        self,
+        investigation_id: UUID,
+        current_phase: str,
+        state_data: Dict[str, Any]
+    ):
+        """Save investigation state for pause/resume"""
+        investigation = self.get_investigation(investigation_id)
+        if not investigation:
+            return
+        
+        if not investigation.summary:
+            investigation.summary = {}
+        
+        investigation.summary['_state'] = {
+            'phase': current_phase,
+            'data': state_data,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        self.session.commit()
+    
+    def _load_investigation_state(self, investigation_id: UUID) -> Optional[Dict[str, Any]]:
+        """Load saved investigation state"""
+        investigation = self.get_investigation(investigation_id)
+        if investigation and investigation.summary and isinstance(investigation.summary, dict):
+            return investigation.summary.get('_state')
+        return None
+    
+    def _classify_request(self, user_input: str, has_files: bool = False) -> str:
+        """
+        Classify user request as 'investigation' or 'chat'.
+        
+        Args:
+            user_input: User's message
+            has_files: Whether files were uploaded
+            
+        Returns:
+            'investigation' or 'chat'
+        """
+        # If files uploaded, it's likely an investigation
+        if has_files:
+            return 'investigation'
+        
+        # Check for investigation keywords
+        investigation_keywords = [
+            'investigate', 'check', 'verify', 'find', 'search',
+            'analyze', 'research', 'look into', 'examine', 'inspect',
+            'facility', 'violation', 'permit', 'compliance', 'trafficking'
+        ]
+        
+        # Check for chat keywords
+        chat_keywords = [
+            'hello', 'hi', 'hey', 'what', 'how', 'can you',
+            'tell me', 'explain', 'help', 'thanks', 'thank you'
+        ]
+        
+        user_lower = user_input.lower()
+        
+        # Count keywords
+        investigation_score = sum(1 for kw in investigation_keywords if kw in user_lower)
+        chat_score = sum(1 for kw in chat_keywords if kw in user_lower)
+        
+        # If clearly chat
+        if chat_score > investigation_score and len(user_input.split()) < 10:
+            return 'chat'
+        
+        # If investigation keywords present
+        if investigation_score > 0:
+            return 'investigation'
+        
+        # Default to chat for short messages
+        if len(user_input.split()) < 5:
+            return 'chat'
+        
+        # Default to investigation for longer, detailed requests
+        return 'investigation'
+    
     async def launch_investigation(
         self,
         investigation_id: UUID,
@@ -250,6 +327,10 @@ class InvestigationService:
         import httpx
         
         logger = get_logger(__name__)
+        
+        # Classify request type
+        request_type = self._classify_request(user_input, has_files=len(files) > 0)
+        logger.info(f"Request classified as: {request_type}")
         
         # Update investigation status
         investigation = self.get_investigation(investigation_id)
@@ -364,9 +445,49 @@ Provide a detailed analysis of the video content, identifying any tigers, their 
                 step_type = "omnivinci_video_analysis"
                 agent_name = "omnivinci"
                 
+            elif request_type == 'investigation':
+                # Use Orchestrator for full investigation workflow
+                logger.info("Using Orchestrator for full investigation workflow")
+                from backend.agents import OrchestratorAgent
+                
+                orchestrator_session = next(get_db_session())
+                try:
+                    orchestrator = OrchestratorAgent(db=orchestrator_session)
+                    
+                    # Prepare user inputs for orchestrator
+                    user_inputs = {
+                        "query": user_input,
+                        "available_tools": all_tools,
+                        "selected_tools": selected_tools or [],
+                        "files": file_data
+                    }
+                    
+                    # Launch full investigation workflow
+                    result = await orchestrator.launch_investigation(
+                        investigation_id=investigation_id,
+                        user_inputs=user_inputs,
+                        context={}
+                    )
+                    
+                    # Extract response from orchestrator
+                    if result.get("success"):
+                        response_text = result.get("summary", "Investigation completed successfully.")
+                        logger.info("Orchestrator investigation completed")
+                    else:
+                        error_msg = result.get("error", "Unknown error")
+                        logger.error(f"Orchestrator investigation failed: {error_msg}")
+                        response_text = f"Investigation error: {error_msg}"
+                    
+                    response_message = response_text
+                    step_type = "orchestrator_investigation"
+                    agent_name = "orchestrator"
+                    
+                finally:
+                    orchestrator_session.close()
+                
             else:
-                # Use Hermes-3 for text-based chat orchestration (proper tool calling)
-                logger.info("Using Hermes-3 chat orchestrator for text-only query")
+                # Use Hermes-3 for chat/clarification (quick responses)
+                logger.info("Using Hermes-3 chat for quick response")
                 hermes_model = get_hermes_chat_model()
                 
                 # Format tools for Hermes

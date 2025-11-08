@@ -92,6 +92,18 @@ class CVWC2019ReIDModel:
             logger.error(f"Failed to generate embedding: {e}")
             return None
     
+    async def generate_embedding_from_bytes(self, image_data: bytes) -> Optional[np.ndarray]:
+        """
+        Generate embedding from image bytes (alias for generate_embedding for compatibility).
+        
+        Args:
+            image_data: Image bytes
+            
+        Returns:
+            Embedding vector (numpy array) or None if failed
+        """
+        return await self.generate_embedding(image_data)
+    
     def compare_embeddings(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
         """
         Compare two embeddings and return similarity score using cosine similarity.

@@ -111,7 +111,7 @@ const Home = () => {
           <Button
             variant="primary"
             className="w-full"
-            onClick={() => navigate('/investigations/launch')}
+            onClick={() => navigate('/investigations?tab=1')}
           >
             <FolderIcon className="h-5 w-5 mr-2" />
             Launch Investigation

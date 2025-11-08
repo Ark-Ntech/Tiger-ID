@@ -133,12 +133,15 @@ export const api = createApi({
       providesTags: (_result, _error, id) => [{ type: 'Investigation', id }],
     }),
 
-    createInvestigation: builder.mutation<ApiResponse<Investigation>, FormData>({
-      query: (data) => ({
-        url: '/api/v1/investigations',
-        method: 'POST',
-        body: data,
-      }),
+    createInvestigation: builder.mutation<ApiResponse<Investigation>, { title: string; description?: string; priority?: string }>({
+      query: (data) => {
+        console.log('Creating investigation with data:', data)
+        return {
+          url: '/api/v1/investigations',
+          method: 'POST',
+          body: data,
+        }
+      },
       invalidatesTags: ['Investigation', 'Dashboard'],
     }),
 
@@ -160,13 +163,27 @@ export const api = createApi({
     launchInvestigation: builder.mutation<ApiResponse<Investigation>, { investigation_id: string; user_input?: string; files?: File[]; selected_tools?: string[] }>({
       query: ({ investigation_id, user_input, files, selected_tools }) => {
         const formData = new FormData()
-        if (user_input) formData.append('user_input', user_input)
-        if (selected_tools) {
+        
+        // Always append user_input, even if empty
+        formData.append('user_input', user_input || '')
+        
+        // Append selected_tools if provided
+        if (selected_tools && selected_tools.length > 0) {
           selected_tools.forEach(tool => formData.append('selected_tools', tool))
         }
-        if (files) {
+        
+        // Append files if provided
+        if (files && files.length > 0) {
           files.forEach(file => formData.append('files', file))
         }
+        
+        console.log('Sending launchInvestigation request:', {
+          investigation_id,
+          user_input: user_input || '',
+          selected_tools,
+          files_count: files?.length || 0
+        })
+        
         return {
           url: `/api/v1/investigations/${investigation_id}/launch`,
           method: 'POST',
@@ -181,6 +198,45 @@ export const api = createApi({
         url: '/api/v1/investigations/mcp-tools',
       }),
       providesTags: ['Investigation'],
+    }),
+
+    getInvestigationExtended: builder.query<ApiResponse<any>, string>({
+      query: (id) => `/api/v1/investigations/${id}/extended`,
+      providesTags: (_result, _error, id) => [{ type: 'Investigation', id }],
+    }),
+
+    resumeInvestigation: builder.mutation<ApiResponse<Investigation>, string>({
+      query: (id) => ({
+        url: `/api/v1/investigations/${id}/resume`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [{ type: 'Investigation', id }, 'Dashboard'],
+    }),
+
+    pauseInvestigation: builder.mutation<ApiResponse<Investigation>, string>({
+      query: (id) => ({
+        url: `/api/v1/investigations/${id}/pause`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [{ type: 'Investigation', id }, 'Dashboard'],
+    }),
+
+    bulkPauseInvestigations: builder.mutation<ApiResponse<any>, string[]>({
+      query: (ids) => ({
+        url: '/api/v1/investigations/bulk/pause',
+        method: 'POST',
+        body: ids,
+      }),
+      invalidatesTags: ['Investigation', 'Dashboard'],
+    }),
+
+    bulkArchiveInvestigations: builder.mutation<ApiResponse<any>, string[]>({
+      query: (ids) => ({
+        url: '/api/v1/investigations/bulk/archive',
+        method: 'POST',
+        body: ids,
+      }),
+      invalidatesTags: ['Investigation', 'Dashboard'],
     }),
 
     // Tiger endpoints
@@ -221,6 +277,23 @@ export const api = createApi({
     getAvailableModels: builder.query<ApiResponse<{ models: string[]; default: string }>, void>({
       query: () => '/api/v1/tigers/models',
       providesTags: ['Tiger'],
+    }),
+
+    createTiger: builder.mutation<ApiResponse<any>, FormData>({
+      query: (data) => ({
+        url: '/api/v1/tigers',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['Tiger'],
+    }),
+
+    launchInvestigationFromTiger: builder.mutation<ApiResponse<any>, { tiger_id: string; tiger_name?: string }>({
+      query: ({ tiger_id }) => ({
+        url: `/api/v1/tigers/${tiger_id}/launch-investigation`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Investigation', 'Tiger'],
     }),
 
     // Model testing endpoints
@@ -309,6 +382,15 @@ export const api = createApi({
       invalidatesTags: ['Template'],
     }),
 
+    applyTemplate: builder.mutation<ApiResponse<any>, { template_id: string; investigation_id: string }>({
+      query: ({ template_id, investigation_id }) => ({
+        url: `/api/v1/templates/${template_id}/apply`,
+        method: 'POST',
+        params: { investigation_id },
+      }),
+      invalidatesTags: ['Template', 'Investigation'],
+    }),
+
     // Saved Search endpoints
     getSavedSearches: builder.query<ApiResponse<SavedSearch[]>, void>({
       query: () => '/api/v1/saved-searches',
@@ -369,6 +451,36 @@ export const api = createApi({
         body: data,
       }),
       invalidatesTags: ['Evidence'],
+    }),
+
+    uploadEvidence: builder.mutation<
+      ApiResponse<any>,
+      { investigation_id: string; file: File; title?: string; description?: string }
+    >({
+      query: ({ investigation_id, file, title, description }) => {
+        const formData = new FormData()
+        formData.append('file', file)
+        if (title) formData.append('title', title)
+        if (description) formData.append('description', description)
+        return {
+          url: `/api/v1/investigations/${investigation_id}/evidence/upload`,
+          method: 'POST',
+          body: formData,
+        }
+      },
+      invalidatesTags: ['Evidence'],
+    }),
+
+    linkTigerEvidence: builder.mutation<
+      ApiResponse<any>,
+      { investigation_id: string; tiger_id: string; image_url?: string; notes?: string }
+    >({
+      query: ({ investigation_id, tiger_id, image_url, notes }) => ({
+        url: `/api/v1/investigations/${investigation_id}/evidence/link-tiger`,
+        method: 'POST',
+        body: { tiger_id, image_url, notes },
+      }),
+      invalidatesTags: ['Evidence', 'Investigation'],
     }),
 
     // Investigation Tools endpoints
@@ -743,14 +855,21 @@ export const {
   useGetDashboardStatsQuery,
   useGetInvestigationsQuery,
   useGetInvestigationQuery,
+  useGetInvestigationExtendedQuery,
   useCreateInvestigationMutation,
   useUpdateInvestigationMutation,
   useLaunchInvestigationMutation,
+  useResumeInvestigationMutation,
+  usePauseInvestigationMutation,
+  useBulkPauseInvestigationsMutation,
+  useBulkArchiveInvestigationsMutation,
   useGetTigersQuery,
   useGetTigerQuery,
   useIdentifyTigerMutation,
   useIdentifyTigersBatchMutation,
   useGetAvailableModelsQuery,
+  useCreateTigerMutation,
+  useLaunchInvestigationFromTigerMutation,
   useTestModelMutation,
   useEvaluateModelMutation,
   useCompareModelsMutation,
@@ -768,6 +887,8 @@ export const {
   useUpdateVerificationTaskMutation,
   useGetEvidenceQuery,
   useAddEvidenceMutation,
+  useUploadEvidenceMutation,
+  useLinkTigerEvidenceMutation,
   // Investigation Tools
   useWebSearchMutation,
   useReverseImageSearchMutation,

@@ -13,7 +13,7 @@ const navigation = [
   { name: 'Home', to: '/', icon: HomeIcon },
   { name: 'Dashboard', to: '/dashboard', icon: ChartBarIcon },
   { name: 'Investigations', to: '/investigations', icon: FolderIcon },
-  { name: 'Launch Investigation', to: '/investigations/launch', icon: MagnifyingGlassCircleIcon },
+  { name: 'Launch Investigation', to: '/investigations?tab=1', icon: MagnifyingGlassCircleIcon },
   { name: 'Tigers', to: '/tigers', icon: ShieldCheckIcon },
   { name: 'Facilities', to: '/facilities', icon: BuildingOfficeIcon },
   { name: 'Verification', to: '/verification', icon: ShieldCheckIcon },

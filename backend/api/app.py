@@ -26,6 +26,10 @@ from backend.api.websocket_routes import router as websocket_router
 from backend.api.verification_routes import router as verification_router
 from backend.api.tiger_routes import router as tiger_router
 from backend.api.model_testing_routes import router as model_testing_router
+from backend.api.approval_routes import router as approval_router
+from backend.api.finetuning_routes import router as finetuning_router
+from backend.api.model_performance_routes import router as model_performance_router
+from backend.api.model_version_routes import router as model_version_router
 from backend.api.middleware import RateLimitMiddleware
 from backend.middleware.audit_middleware import AuditMiddleware
 from backend.middleware.csrf_middleware import CSRFMiddleware
@@ -227,6 +231,10 @@ def create_app() -> FastAPI:
     app.include_router(websocket_router)  # WebSocket routes for real-time communication
     app.include_router(verification_router)  # Verification task routes
     app.include_router(model_testing_router, prefix="/api/v1")  # Model testing routes
+    app.include_router(approval_router)  # Approval routes
+    app.include_router(finetuning_router)  # Fine-tuning routes
+    app.include_router(model_performance_router)  # Model performance monitoring routes
+    app.include_router(model_version_router)  # Model version management routes
     
     # Modal routes for model status and management
     try:

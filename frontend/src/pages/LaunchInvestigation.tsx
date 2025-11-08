@@ -5,12 +5,13 @@ import {
   useLaunchInvestigationMutation,
   useGetMCPToolsQuery
 } from '../app/api'
+import { useWebSocket } from '../hooks/useWebSocket'
 import Card from '../components/common/Card'
 import Button from '../components/common/Button'
 import Badge from '../components/common/Badge'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Alert from '../components/common/Alert'
-import { PaperAirplaneIcon, WrenchScrewdriverIcon, CheckCircleIcon, XCircleIcon, ArrowPathIcon, ChatBubbleLeftRightIcon, GlobeAltIcon, PhotoIcon, NewspaperIcon, LightBulbIcon, ShareIcon, CubeIcon, DocumentTextIcon, ServerIcon, DocumentArrowUpIcon, CpuChipIcon } from '@heroicons/react/24/outline'
+import { PaperAirplaneIcon, WrenchScrewdriverIcon, CheckCircleIcon, XCircleIcon, ArrowPathIcon, ChatBubbleLeftRightIcon, GlobeAltIcon, PhotoIcon, NewspaperIcon, LightBulbIcon, ShareIcon, DocumentTextIcon, ServerIcon, DocumentArrowUpIcon, CpuChipIcon } from '@heroicons/react/24/outline'
 import WebSearchTab from '../components/investigations/WebSearchTab'
 import ReverseImageSearchTab from '../components/investigations/ReverseImageSearchTab'
 import NewsMonitorTab from '../components/investigations/NewsMonitorTab'
@@ -20,6 +21,8 @@ import EvidenceCompilationTab from '../components/investigations/EvidenceCompila
 import CrawlSchedulerTab from '../components/investigations/CrawlSchedulerTab'
 import ReferenceDataTab from '../components/investigations/ReferenceDataTab'
 import ModelTestingTab from '../components/investigations/ModelTestingTab'
+import AgentActivityFeed from '../components/investigations/AgentActivityFeed'
+import ApprovalModal from '../components/investigations/ApprovalModal'
 
 interface Message {
   id: string
@@ -58,6 +61,8 @@ const LaunchInvestigation = () => {
   const [error, setError] = useState<string | null>(null)
   const [investigationId, setInvestigationId] = useState<string | null>(null)
   const [launchProgress, setLaunchProgress] = useState<{ step: string; status: 'pending' | 'running' | 'completed' | 'error' }[]>([])
+  const [agentActivities, setAgentActivities] = useState<any[]>([])
+  const [pendingApproval, setPendingApproval] = useState<any>(null)
 
   const tabs = [
     { name: 'Assistant', icon: ChatBubbleLeftRightIcon, component: null },
@@ -92,6 +97,62 @@ const LaunchInvestigation = () => {
       setMessages([welcomeMessage])
     }
   }, [])
+
+  // WebSocket connection for real-time updates
+  const { isConnected } = useWebSocket({
+    onMessage: (message) => {
+      if (message.type === 'agent_activity') {
+        // Add agent activity to feed
+        setAgentActivities(prev => [...prev, message.data])
+        
+        // Update progress if phase changed
+        if (message.data.status === 'running') {
+          const phaseMap: Record<string, string> = {
+            'research_agent': 'Gathering evidence',
+            'analysis_agent': 'Analyzing evidence',
+            'validation_agent': 'Validating findings',
+            'reporting_agent': 'Generating report'
+          }
+          const stepName = phaseMap[message.data.agent] || message.data.action
+          setLaunchProgress(prev => {
+            const exists = prev.find(p => p.step === stepName)
+            if (!exists) {
+              return [...prev, { step: stepName, status: 'running' }]
+            }
+            return prev
+          })
+        } else if (message.data.status === 'completed') {
+          setLaunchProgress(prev => prev.map(p => 
+            p.step.toLowerCase().includes(message.data.agent.split('_')[0]) 
+              ? { ...p, status: 'completed' as const } 
+              : p
+          ))
+        }
+      } else if (message.type === 'approval_required') {
+        // Show approval modal
+        setPendingApproval(message.data)
+      } else if (message.type === 'investigation_completed') {
+        // Investigation finished
+        setIsLoading(false)
+        setLaunchProgress([])
+        const completionMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `Investigation completed! ${message.data.summary || 'View results in the investigation workspace.'}`,
+          timestamp: new Date().toISOString()
+        }
+        setMessages(prev => [...prev, completionMessage])
+        
+        // Navigate to workspace after short delay
+        setTimeout(() => {
+          if (investigationId) {
+            navigate(`/investigations/${investigationId}`)
+          }
+        }, 2000)
+      }
+    },
+    autoConnect: true
+  })
 
   const mcpServers: Record<string, MCPServer> = mcpToolsData?.data?.servers || {}
   
@@ -136,12 +197,13 @@ const LaunchInvestigation = () => {
       // If no investigation exists yet, create one
       if (!investigationId) {
         const investigationTitle = input || 'New Investigation'
-        const formData = new FormData()
-        formData.append('title', investigationTitle)
-        formData.append('description', input || 'Investigation launched from chatbot')
-        formData.append('priority', 'medium')
+        const investigationData = {
+          title: investigationTitle,
+          description: input || 'Investigation launched from chatbot',
+          priority: 'medium' as const
+        }
 
-        const createResult = await createInvestigation(formData).unwrap()
+        const createResult = await createInvestigation(investigationData).unwrap()
         const newInvestigationId = createResult.data.id
         setInvestigationId(newInvestigationId)
 
@@ -156,27 +218,13 @@ const LaunchInvestigation = () => {
 
         // Launch investigation
         const selectedToolsArray = Array.from(selectedTools)
-        const progressSteps = [
-          { step: 'Initializing agents', status: 'pending' as const },
-          { step: 'Processing input', status: 'pending' as const },
-          { step: selectedToolsArray.length > 0 ? `Using ${selectedToolsArray.length} selected tools` : 'Auto-selecting tools', status: 'pending' as const },
-          { step: 'Gathering evidence', status: 'pending' as const },
-          { step: 'Compiling results', status: 'pending' as const },
-        ]
-        setLaunchProgress(progressSteps)
+        
+        // Initialize progress (will be updated by WebSocket events)
+        setLaunchProgress([
+          { step: 'Starting investigation', status: 'running' as const }
+        ])
 
-        // Simulate progress
-        for (let i = 0; i < progressSteps.length; i++) {
-          setLaunchProgress(prev => prev.map((step, idx) => 
-            idx === i ? { ...step, status: 'running' as const } : step
-          ))
-          await new Promise(resolve => setTimeout(resolve, 800))
-          setLaunchProgress(prev => prev.map((step, idx) => 
-            idx === i ? { ...step, status: 'completed' as const } : step
-          ))
-        }
-
-        try {
+        try{
           const launchResult = await launchInvestigation({
             investigation_id: newInvestigationId,
             user_input: input || 'Launch investigation',
@@ -186,35 +234,110 @@ const LaunchInvestigation = () => {
           const assistantMessage: Message = {
             id: (Date.now() + 2).toString(),
             role: 'assistant',
-            content: `Investigation launched successfully! ${launchResult.data ? 'Evidence has been gathered and organized.' : ''}\n\nWould you like to:\n1. View the investigation workspace\n2. Ask more questions\n3. Add more tools`,
+            content: (launchResult.data as any)?.response || 'Investigation launched successfully!',
             timestamp: new Date().toISOString(),
           }
           setMessages(prev => [...prev, assistantMessage])
         } catch (launchError: any) {
-          setError(launchError.message || 'Failed to launch investigation')
+          console.error('Launch error:', launchError)
+          let launchErrorMsg = 'Failed to launch investigation'
+          if (launchError.data?.detail) {
+            if (Array.isArray(launchError.data.detail)) {
+              launchErrorMsg = launchError.data.detail.map((e: any) => e.msg || JSON.stringify(e)).join(', ')
+            } else if (typeof launchError.data.detail === 'string') {
+              launchErrorMsg = launchError.data.detail
+            } else {
+              launchErrorMsg = JSON.stringify(launchError.data.detail)
+            }
+          } else if (launchError.data?.message) {
+            launchErrorMsg = launchError.data.message
+          } else if (launchError.message) {
+            launchErrorMsg = launchError.message
+          }
+          setError(launchErrorMsg)
           setLaunchProgress(prev => prev.map(step => 
             step.status === 'running' ? { ...step, status: 'error' as const } : step
           ))
         }
       } else {
         // Continue conversation with existing investigation
-        const assistantMessage: Message = {
-          id: (Date.now() + 2).toString(),
-          role: 'assistant',
-          content: `I understand: "${input}". How would you like to proceed?`,
-          timestamp: new Date().toISOString(),
+        const selectedToolsArray = Array.from(selectedTools)
+        
+        try {
+          const launchResult = await launchInvestigation({
+            investigation_id: investigationId,
+            user_input: input,
+            selected_tools: selectedToolsArray.length > 0 ? selectedToolsArray : undefined,
+          }).unwrap()
+
+          const assistantMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            role: 'assistant',
+            content: (launchResult.data as any)?.response || 'Request processed successfully.',
+            timestamp: new Date().toISOString(),
+          }
+          setMessages(prev => [...prev, assistantMessage])
+        } catch (continueError: any) {
+          console.error('Continue conversation error:', continueError)
+          let continueErrorMsg = 'Failed to process message'
+          if (continueError.data?.detail) {
+            if (Array.isArray(continueError.data.detail)) {
+              continueErrorMsg = continueError.data.detail.map((e: any) => e.msg || JSON.stringify(e)).join(', ')
+            } else if (typeof continueError.data.detail === 'string') {
+              continueErrorMsg = continueError.data.detail
+            } else {
+              continueErrorMsg = JSON.stringify(continueError.data.detail)
+            }
+          } else if (continueError.data?.message) {
+            continueErrorMsg = continueError.data.message
+          } else if (continueError.message) {
+            continueErrorMsg = continueError.message
+          }
+          setError(continueErrorMsg)
         }
-        setMessages(prev => [...prev, assistantMessage])
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred')
-      const errorMessage: Message = {
+      console.group('🚨 Investigation Error Details')
+      console.error('Full error object:', err)
+      console.error('Error type:', typeof err)
+      console.error('Error keys:', Object.keys(err || {}))
+      console.error('err.message:', err.message)
+      console.error('err.data:', err.data)
+      console.error('err.data.detail:', err.data?.detail)
+      console.error('err.status:', err.status)
+      console.error('err.error:', err.error)
+      console.groupEnd()
+      
+      // Extract error message from RTK Query error structure
+      let errorMessage = 'Unknown error'
+      
+      if (err.data?.detail) {
+        // FastAPI validation errors come as array of objects
+        if (Array.isArray(err.data.detail)) {
+          errorMessage = err.data.detail.map((e: any) => e.msg || JSON.stringify(e)).join(', ')
+        } else if (typeof err.data.detail === 'string') {
+          errorMessage = err.data.detail
+        } else {
+          errorMessage = JSON.stringify(err.data.detail)
+        }
+      } else if (err.data?.message) {
+        errorMessage = err.data.message
+      } else if (err.message) {
+        errorMessage = err.message
+      } else if (err.error) {
+        errorMessage = err.error
+      } else if (typeof err === 'string') {
+        errorMessage = err
+      }
+      
+      setError(errorMessage)
+      const errorMsg: Message = {
         id: (Date.now() + 2).toString(),
         role: 'assistant',
-        content: `Sorry, I encountered an error: ${err.message || 'Unknown error'}. Please try again.`,
+        content: `Sorry, I encountered an error: ${errorMessage}. Please try again.`,
         timestamp: new Date().toISOString(),
       }
-      setMessages(prev => [...prev, errorMessage])
+      setMessages(prev => [...prev, errorMsg])
     } finally {
       setIsLoading(false)
     }
@@ -252,6 +375,35 @@ const LaunchInvestigation = () => {
 
       {error && <Alert type="error">{error}</Alert>}
 
+      {/* Approval Modal */}
+      {pendingApproval && (
+        <ApprovalModal
+          isOpen={true}
+          onClose={() => setPendingApproval(null)}
+          approvalId={pendingApproval.approval_id}
+          approvalType={pendingApproval.approval_type}
+          data={pendingApproval.data}
+          onApprove={() => {
+            // Call approval API
+            fetch(`/api/v1/approvals/${pendingApproval.approval_id}/submit`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ approved: true })
+            })
+            setPendingApproval(null)
+          }}
+          onReject={(reason) => {
+            // Call approval API with rejection
+            fetch(`/api/v1/approvals/${pendingApproval.approval_id}/submit`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ approved: false, message: reason })
+            })
+            setPendingApproval(null)
+          }}
+        />
+      )}
+
       {/* Tab Navigation */}
       <Card padding="none">
         <div className="border-b border-gray-200">
@@ -283,9 +435,16 @@ const LaunchInvestigation = () => {
         {/* Tab Content */}
         <div className="p-6">
           {isAssistantTab ? (
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Chat Interface */}
-        <div className="lg:col-span-3">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column - Agent Activity (if investigation active) */}
+              {agentActivities.length > 0 && (
+                <div className="lg:col-span-1">
+                  <AgentActivityFeed activities={agentActivities} maxItems={10} />
+                </div>
+              )}
+              
+              {/* Main Column - Chat */}
+              <div className={agentActivities.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
           <Card className="h-[calc(100vh-16rem)] flex flex-col">
             {/* Tool Selector Toggle */}
             <div className="border-b pb-4 mb-4 flex items-center justify-between">
@@ -308,14 +467,14 @@ const LaunchInvestigation = () => {
               <div className="border-b pb-4 mb-4 max-h-48 overflow-y-auto">
                 {toolsLoading ? (
                   <LoadingSpinner size="sm" />
-                ) : toolsError ? (
-                  <Alert type="error" className="text-sm">
-                    Failed to load tools. Please check your authentication and try again.
-                  </Alert>
-                ) : Object.keys(mcpServers).length === 0 ? (
-                  <Alert type="info" className="text-sm">
-                    No tools available. Make sure you're authenticated and the MCP servers are running.
-                  </Alert>
+            ) : toolsError ? (
+              <Alert type="error">
+                <span className="text-sm">Failed to load tools. Please check your authentication and try again.</span>
+              </Alert>
+            ) : Object.keys(mcpServers).length === 0 ? (
+              <Alert type="info">
+                <span className="text-sm">No tools available. Make sure you're authenticated and the MCP servers are running.</span>
+              </Alert>
                 ) : (
                   <div className="space-y-4">
                     {Object.entries(mcpServers).map(([serverKey, server]) => (
@@ -325,14 +484,17 @@ const LaunchInvestigation = () => {
                         <div className="flex flex-wrap gap-2">
                           {server.tools && server.tools.length > 0 ? (
                             server.tools.map((tool: Tool) => (
-                              <Badge
+                              <div
                                 key={tool.name}
-                                variant={selectedTools.has(tool.name) ? 'success' : 'outline'}
-                                className="cursor-pointer"
+                                className="cursor-pointer inline-block"
                                 onClick={() => toggleTool(tool.name)}
                               >
-                                {tool.name}
-                              </Badge>
+                                <Badge
+                                  variant={selectedTools.has(tool.name) ? 'success' : 'default'}
+                                >
+                                  {tool.name}
+                                </Badge>
+                              </div>
                             ))
                           ) : (
                             <p className="text-xs text-gray-500">No tools available for this server</p>
@@ -462,12 +624,12 @@ const LaunchInvestigation = () => {
             {toolsLoading ? (
               <LoadingSpinner size="sm" />
             ) : toolsError ? (
-              <Alert type="error" className="text-sm">
-                Failed to load tools. Please check authentication.
+              <Alert type="error">
+                <span className="text-sm">Failed to load tools. Please check authentication.</span>
               </Alert>
             ) : Object.keys(mcpServers).length === 0 ? (
-              <Alert type="info" className="text-sm">
-                No tools available. Make sure you're authenticated.
+              <Alert type="info">
+                <span className="text-sm">No tools available. Make sure you're authenticated.</span>
               </Alert>
             ) : (
               <div className="space-y-4 max-h-[calc(100vh-20rem)] overflow-y-auto">

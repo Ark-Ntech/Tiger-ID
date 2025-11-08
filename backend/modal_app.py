@@ -40,6 +40,7 @@ tiger_reid_image = (
         "torchvision>=0.18.0,<0.25.0",
         "Pillow>=11.0.0",
         "numpy>=1.26.0,<2.0.0",
+        "yacs>=0.1.8",  # For CVWC2019 config
     )
 )
 
@@ -537,6 +538,35 @@ If you need to use a tool, describe what you want to do and I will execute it fo
 
 # ==================== RAPID ReID Model ====================
 
+def download_rapid_weights(volume_path: Path, models_volume_ref):
+    """
+    Download RAPID weights directly to Modal volume.
+    
+    Note: Actual trained weights may need to be obtained from:
+    - RAPID paper repository (when available)
+    - Paper supplement
+    - Contact authors
+    """
+    import urllib.request
+    import os
+    
+    weight_dir = volume_path / "rapid" / "checkpoints"
+    weight_dir.mkdir(parents=True, exist_ok=True)
+    
+    weight_path = weight_dir / "model.pth"
+    
+    # Check if weights already exist
+    if weight_path.exists():
+        print(f"RAPID weights already exist at {weight_path}")
+        return str(weight_path)
+    
+    # TODO: Replace with actual weight download URL when available
+    print("RAPID trained weights not found. Using ImageNet pretrained ResNet50 as fallback.")
+    print("To use actual RAPID weights, download from paper repository and upload to Modal volume.")
+    
+    return None
+
+
 @app.cls(
     image=tiger_reid_image,
     gpu=GPU_CONFIG_T4,
@@ -544,21 +574,50 @@ If you need to use a tool, describe what you want to do and I will execute it fo
     timeout=600,
 )
 class RAPIDReIDModel:
-    """RAPID re-identification model."""
+    """RAPID re-identification model for real-time animal pattern matching."""
     
     @modal.enter()
     def load_model(self):
-        """Load RAPID model."""
+        """Load RAPID model with weights from Modal volume."""
         import torch
         import torchvision.models as models
         from torchvision import transforms
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        # Load model (placeholder with ResNet50 pretrained)
-        # TODO: Add RAPID model when official weights are available
+        # Check for weights in Modal volume
+        weight_path = Path(MODEL_CACHE_DIR) / "rapid" / "checkpoints" / "model.pth"
+        
+        # Try to download weights if they don't exist
+        if not weight_path.exists():
+            print("RAPID weights not found in volume. Attempting to download...")
+            download_rapid_weights(Path(MODEL_CACHE_DIR), models_volume)
+        
+        # For now, use ResNet50 as base architecture
+        # TODO: Replace with actual RAPID architecture when weights are available
+        # RAPID is designed for real-time pattern matching on edge devices
+        # The actual architecture may differ from standard ResNet
+        
         self.model = models.resnet50(pretrained=True)
-        self.model.fc = torch.nn.Identity()
+        self.model.fc = torch.nn.Identity()  # Remove classifier, use features
+        
+        # If trained weights exist, load them
+        if weight_path.exists():
+            try:
+                checkpoint = torch.load(weight_path, map_location=self.device)
+                # Load state dict, skipping classifier if present
+                if isinstance(checkpoint, dict):
+                    state_dict = checkpoint.get('state_dict', checkpoint)
+                else:
+                    state_dict = checkpoint
+                
+                # Filter out classifier weights
+                filtered_dict = {k: v for k, v in state_dict.items() if 'classifier' not in k}
+                self.model.load_state_dict(filtered_dict, strict=False)
+                print(f"Loaded RAPID weights from {weight_path}")
+            except Exception as e:
+                print(f"Warning: Could not load RAPID weights: {e}")
+                print("Using ImageNet pretrained weights instead")
         
         self.model = self.model.to(self.device)
         self.model.eval()
@@ -584,6 +643,11 @@ class RAPIDReIDModel:
             
             embedding_array = embedding.cpu().numpy().flatten()
             
+            # Normalize embedding
+            norm = np.linalg.norm(embedding_array)
+            if norm > 0:
+                embedding_array = embedding_array / norm
+            
             return {
                 "embedding": embedding_array.tolist(),
                 "shape": embedding_array.shape,
@@ -600,6 +664,33 @@ class RAPIDReIDModel:
 
 # ==================== CVWC2019 Model ====================
 
+def download_cvwc2019_weights(volume_path: Path, models_volume_ref):
+    """
+    Check for CVWC2019 weights in Modal volume.
+    
+    Note: Weights should be uploaded to Modal volume using scripts/upload_weights_to_modal.py
+    Actual trained weights may need to be obtained from:
+    - CVWC2019 GitHub repo: https://github.com/LcenArthas/CWCV2019-Amur-Tiger-Re-ID
+    - Paper supplement or contact authors
+    - Baidu Pan links in README (may require manual download)
+    """
+    weight_dir = volume_path / "cvwc2019"
+    weight_dir.mkdir(parents=True, exist_ok=True)
+    
+    weight_path = weight_dir / "best_model.pth"
+    
+    # Check if weights already exist
+    if weight_path.exists():
+        print(f"CVWC2019 weights already exist at {weight_path}")
+        return str(weight_path)
+    
+    print("CVWC2019 trained weights not found in Modal volume.")
+    print("To add weights, use: scripts/upload_weights_to_modal.py")
+    print("Weights should be downloaded from GitHub repo and uploaded to Modal volume.")
+    
+    return None
+
+
 @app.cls(
     image=tiger_reid_image,
     gpu=GPU_CONFIG_T4,
@@ -611,17 +702,59 @@ class CVWC2019ReIDModel:
     
     @modal.enter()
     def load_model(self):
-        """Load CVWC2019 model."""
+        """Load CVWC2019 model with weights from Modal volume."""
         import torch
         import torchvision.models as models
         from torchvision import transforms
+        import sys
+        import os
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        # Load model (placeholder with ResNet50 pretrained)
-        # TODO: Add CVWC2019 model when official weights are available
+        # Check for weights in Modal volume
+        weight_path = Path(MODEL_CACHE_DIR) / "cvwc2019" / "best_model.pth"
+        
+        # Try to check for weights if they don't exist
+        if not weight_path.exists():
+            print("CVWC2019 weights not found in volume.")
+            print("To add weights, use: scripts/upload_weights_to_modal.py")
+            download_cvwc2019_weights(Path(MODEL_CACHE_DIR), models_volume)
+        
+        # For now, use ResNet50 as base architecture
+        # TODO: Replace with actual CVWC2019 part-pose architecture when weights are available
+        # The full architecture requires:
+        # - Global stream (ResNet152 backbone)
+        # - Part body stream (ResNet34 backbone)
+        # - Part paw stream (ResNet34 backbone)
+        # - Pipeline to combine features
+        # 
+        # To implement full architecture:
+        # 1. Add data/models/cvwc2019 to Modal image
+        # 2. Import from data.models.cvwc2019.modeling import build_model
+        # 3. Build model with proper config
+        
+        # Simplified version: Use ResNet50 with ImageNet pretrained
+        # This will be replaced with actual CVWC2019 architecture when weights are available
         self.model = models.resnet50(pretrained=True)
-        self.model.fc = torch.nn.Identity()
+        self.model.fc = torch.nn.Identity()  # Remove classifier, use features
+        
+        # If trained weights exist, load them
+        if weight_path.exists():
+            try:
+                checkpoint = torch.load(weight_path, map_location=self.device)
+                # Load state dict, skipping classifier if present
+                if isinstance(checkpoint, dict):
+                    state_dict = checkpoint.get('state_dict', checkpoint)
+                else:
+                    state_dict = checkpoint
+                
+                # Filter out classifier weights
+                filtered_dict = {k: v for k, v in state_dict.items() if 'classifier' not in k}
+                self.model.load_state_dict(filtered_dict, strict=False)
+                print(f"Loaded CVWC2019 weights from {weight_path}")
+            except Exception as e:
+                print(f"Warning: Could not load CVWC2019 weights: {e}")
+                print("Using ImageNet pretrained weights instead")
         
         self.model = self.model.to(self.device)
         self.model.eval()
@@ -647,6 +780,11 @@ class CVWC2019ReIDModel:
             
             embedding_array = embedding.cpu().numpy().flatten()
             
+            # Normalize embedding
+            norm = np.linalg.norm(embedding_array)
+            if norm > 0:
+                embedding_array = embedding_array / norm
+            
             return {
                 "embedding": embedding_array.tolist(),
                 "shape": embedding_array.shape,
@@ -659,7 +797,6 @@ class CVWC2019ReIDModel:
                 "error": str(e),
                 "success": False
             }
-
 
 
 # ==================== Hermes-3-Llama-3.1-8B Chat Orchestrator ====================

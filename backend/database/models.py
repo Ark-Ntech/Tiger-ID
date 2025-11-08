@@ -373,6 +373,7 @@ class ModelVersion(Base):
     __tablename__ = "model_versions"
     
     model_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    model_name = Column(String(100), nullable=False, index=True)  # e.g., 'wildlife_tools', 'tiger_reid'
     model_type = Column(SQLEnum(ModelType), nullable=False, index=True)
     version = Column(String(50), nullable=False)
     path = Column(String(500), nullable=False)
