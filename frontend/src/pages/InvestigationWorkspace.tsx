@@ -64,7 +64,7 @@ const InvestigationWorkspace = () => {
     investigation_id: id!,
     limit: 100,
   }, { skip: !id })
-  const { refetch: refetchEvidence } = useGetEvidenceQuery(id!, { skip: !id })
+  const { refetch: refetchEvidence } = useGetEvidenceQuery({ investigation_id: id! }, { skip: !id })
 
   // WebSocket integration for real-time updates
   const { isConnected, joinInvestigation, leaveInvestigation } = useWebSocket({

@@ -2,7 +2,7 @@
 
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -447,6 +447,447 @@ async def tool_callback(
             "success": False,
             "error": str(e)
         }
+@router.post("/bulk/pause")
+async def bulk_pause_investigations(
+    investigation_ids: List[UUID] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Pause multiple investigations"""
+    from backend.services.investigation_service import InvestigationService
+    
+    service = InvestigationService(db)
+    results = []
+    
+    for inv_id in investigation_ids:
+        try:
+            investigation = service.pause_investigation(inv_id)
+            if investigation:
+                results.append({"id": str(inv_id), "success": True})
+            else:
+                results.append({"id": str(inv_id), "success": False, "error": "Not found"})
+        except Exception as e:
+            results.append({"id": str(inv_id), "success": False, "error": str(e)})
+    
+    return {
+        "success": True,
+        "data": {
+            "results": results,
+            "total": len(investigation_ids),
+            "succeeded": sum(1 for r in results if r["success"])
+        }
+    }
+
+
+@router.post("/bulk/archive")
+async def bulk_archive_investigations(
+    investigation_ids: List[UUID] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Archive multiple investigations"""
+    from backend.services.investigation_service import InvestigationService
+    
+    service = InvestigationService(db)
+    results = []
+    
+    for inv_id in investigation_ids:
+        try:
+            investigation = service.update_investigation(inv_id, status="archived")
+            if investigation:
+                results.append({"id": str(inv_id), "success": True})
+            else:
+                results.append({"id": str(inv_id), "success": False, "error": "Not found"})
+        except Exception as e:
+            results.append({"id": str(inv_id), "success": False, "error": str(e)})
+    
+    return {
+        "success": True,
+        "data": {
+            "results": results,
+            "total": len(investigation_ids),
+            "succeeded": sum(1 for r in results if r["success"])
+        }
+    }
+
+
+@router.post("/{investigation_id}/resume")
+async def resume_investigation(
+    investigation_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Resume a paused investigation"""
+    from backend.services.investigation_service import InvestigationService
+    
+    try:
+        service = InvestigationService(db)
+        investigation = service.resume_investigation(investigation_id)
+        
+        if not investigation:
+            raise HTTPException(status_code=404, detail="Investigation not found")
+        
+        logger.info(f"Investigation {investigation_id} resumed by user {current_user.user_id}")
+        
+        # TODO: Re-launch workflow from last checkpoint
+        # For now, just update status to in_progress
+        
+        return {
+            "success": True,
+            "data": {
+                "id": str(investigation.investigation_id),
+                "status": investigation.status.value if hasattr(investigation.status, 'value') else str(investigation.status),
+                "message": "Investigation resumed successfully"
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error resuming investigation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{investigation_id}/pause")
+async def pause_investigation(
+    investigation_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Pause an active investigation"""
+    from backend.services.investigation_service import InvestigationService
+    
+    try:
+        service = InvestigationService(db)
+        investigation = service.pause_investigation(investigation_id)
+        
+        if not investigation:
+            raise HTTPException(status_code=404, detail="Investigation not found")
+        
+        logger.info(f"Investigation {investigation_id} paused by user {current_user.user_id}")
+        
+        return {
+            "success": True,
+            "data": {
+                "id": str(investigation.investigation_id),
+                "status": investigation.status.value if hasattr(investigation.status, 'value') else str(investigation.status),
+                "message": "Investigation paused successfully"
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error pausing investigation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{investigation_id}/evidence")
+async def get_investigation_evidence(
+    investigation_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all evidence for an investigation"""
+    from backend.services.investigation_service import InvestigationService
+    
+    service = InvestigationService(db)
+    evidence_items = service.get_investigation_evidence(investigation_id)
+    
+    # Format evidence for frontend
+    evidence_list = []
+    for item in evidence_items:
+        evidence_list.append({
+            "id": str(item.evidence_id),
+            "investigation_id": str(item.investigation_id),
+            "type": item.source_type or 'document',
+            "title": (item.extracted_text[:100] + '...') if item.extracted_text and len(item.extracted_text) > 100 else (item.extracted_text or 'Untitled Evidence'),
+            "description": item.extracted_text,
+            "source": item.source_url,
+            "file_url": item.source_url,
+            "collected_at": item.created_at.isoformat() if item.created_at else None,
+            "created_by": str(item.investigation_id),  # TODO: Add created_by field
+            "verified": False,  # TODO: Add verification field to model
+            "tags": [],
+            "metadata": item.content or {}
+        })
+    
+    return {
+        "success": True,
+        "data": evidence_list
+    }
+
+
+@router.post("/{investigation_id}/evidence/upload")
+async def upload_evidence(
+    investigation_id: UUID,
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload evidence file with MarkitDown processing"""
+    from backend.services.investigation_service import InvestigationService
+    import tempfile
+    import os
+    
+    try:
+        # Import markitdown
+        from markitdown import MarkItDown
+    except ImportError:
+        logger.warning("markitdown not installed, saving file without processing")
+        md = None
+    
+    # Save uploaded file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+    
+    try:
+        # Process with MarkitDown if available
+        extracted_text = description or ''
+        if md:
+            try:
+                result = md.convert(tmp_path)
+                extracted_text = result.text_content if hasattr(result, 'text_content') else str(result)
+            except Exception as e:
+                logger.warning(f"MarkitDown processing failed: {e}")
+                extracted_text = description or 'Document uploaded (processing failed)'
+        
+        # Save to database
+        service = InvestigationService(db)
+        
+        # Check if file is an image and try to identify tigers automatically
+        identified_tigers = []
+        if file.content_type and file.content_type.startswith('image/'):
+            try:
+                from backend.services.tiger_service import TigerService
+                tiger_service = TigerService(db)
+                
+                # Reset file pointer for identification
+                await file.seek(0)
+                
+                # Identify tiger in image
+                identification_result = await tiger_service.identify_tiger_from_image(
+                    image=file,
+                    user_id=current_user.user_id,
+                    similarity_threshold=0.7,
+                    model_name=None  # Use default model
+                )
+                
+                if identification_result.get("identified") and identification_result.get("tiger_id"):
+                    tiger_id = identification_result.get("tiger_id")
+                    confidence = identification_result.get("confidence", 0.0)
+                    
+                    # Link tiger to investigation
+                    identified_tigers.append({
+                        "tiger_id": str(tiger_id),
+                        "tiger_name": identification_result.get("tiger_name", "Unknown"),
+                        "confidence": confidence
+                    })
+                    
+                    # Add tiger to related_tigers
+                    investigation = service.get_investigation(investigation_id)
+                    if investigation:
+                        related_tigers = investigation.related_tigers or []
+                        if str(tiger_id) not in related_tigers:
+                            related_tigers.append(str(tiger_id))
+                            service.update_investigation(
+                                investigation_id,
+                                related_tigers=related_tigers
+                            )
+                    
+                    # Update extracted text with tiger identification info
+                    tiger_info = f"Tiger identified: {identification_result.get('tiger_name', 'Unknown')} (ID: {tiger_id}, Confidence: {confidence:.2%})"
+                    if extracted_text:
+                        extracted_text = f"{tiger_info}\n\n{extracted_text}"
+                    else:
+                        extracted_text = tiger_info
+                    
+                    logger.info(f"Automatically identified tiger {tiger_id} in evidence image")
+            except Exception as e:
+                logger.warning(f"Failed to automatically identify tiger in evidence image: {e}")
+        
+        evidence = service.add_evidence(
+            investigation_id=investigation_id,
+            source_type=file.content_type.split('/')[0] if file.content_type else 'document',
+            source_url=file.filename,
+            content={
+                "filename": file.filename,
+                "size": len(content),
+                "content_type": file.content_type,
+                "identified_tigers": identified_tigers
+            },
+            extracted_text=extracted_text or title or file.filename,
+            relevance_score=0.9 if identified_tigers else 0.8
+        )
+        
+        return {
+            "success": True,
+            "data": {
+                "evidence_id": str(evidence.evidence_id),
+                "title": title or file.filename,
+                "extracted_text": extracted_text[:500] if extracted_text else None,
+                "identified_tigers": identified_tigers
+            }
+        }
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+@router.post("/{investigation_id}/evidence/link-tiger")
+async def link_tiger_evidence(
+    investigation_id: UUID,
+    tiger_id: UUID = Body(...),
+    image_url: Optional[str] = Body(None),
+    notes: Optional[str] = Body(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Link a tiger image as evidence to investigation"""
+    from backend.services.investigation_service import InvestigationService
+    
+    service = InvestigationService(db)
+    
+    # Add as evidence
+    evidence = service.add_evidence(
+        investigation_id=investigation_id,
+        source_type='image',
+        source_url=image_url or f'/api/v1/tigers/{tiger_id}/image',
+        content={"tiger_id": str(tiger_id), "notes": notes or '', "linked_from": "tiger_identification"},
+        extracted_text=f"Tiger identification evidence: {tiger_id}" + (f" - {notes}" if notes else ""),
+        relevance_score=0.9
+    )
+    
+    # Also link tiger to investigation in related_tigers
+    investigation = service.get_investigation(investigation_id)
+    if investigation:
+        related_tigers = investigation.related_tigers or []
+        if str(tiger_id) not in related_tigers:
+            related_tigers.append(str(tiger_id))
+            service.update_investigation(
+                investigation_id,
+                related_tigers=related_tigers
+            )
+    
+    return {
+        "success": True,
+        "data": {
+            "evidence_id": str(evidence.evidence_id),
+            "tiger_id": str(tiger_id),
+            "message": "Tiger linked to investigation successfully"
+        }
+    }
+
+
+@router.get("/{investigation_id}/extended")
+async def get_investigation_extended(
+    investigation_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get investigation with extended information (progress, evidence, activity)"""
+    from backend.services.investigation_service import InvestigationService
+    from backend.services.approval_service import get_approval_service
+    from datetime import datetime
+    
+    service = InvestigationService(db)
+    investigation = service.get_investigation(investigation_id)
+    
+    if not investigation:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+    
+    # Get steps to determine current phase and progress
+    steps = service.get_investigation_steps(investigation_id)
+    
+    # Get evidence count
+    evidence = service.get_investigation_evidence(investigation_id)
+    evidence_by_type = {}
+    for item in evidence:
+        evidence_type = item.source_type or 'unknown'
+        evidence_by_type[evidence_type] = evidence_by_type.get(evidence_type, 0) + 1
+    
+    # Get last activity from steps
+    last_activity = None
+    if steps:
+        last_step = steps[-1]
+        last_activity = {
+            "agent": last_step.agent_name,
+            "action": last_step.step_type,
+            "status": last_step.status,
+            "timestamp": last_step.timestamp.isoformat() if last_step.timestamp else None
+        }
+    
+    # Determine current phase from steps
+    phase_steps = [s for s in steps if 'started' in s.step_type or 'completed' in s.step_type]
+    current_phase = None
+    if phase_steps:
+        last_phase_step = phase_steps[-1]
+        if 'research' in last_phase_step.step_type:
+            current_phase = 'research'
+        elif 'analysis' in last_phase_step.step_type:
+            current_phase = 'analysis'
+        elif 'validation' in last_phase_step.step_type:
+            current_phase = 'validation'
+        elif 'reporting' in last_phase_step.step_type:
+            current_phase = 'reporting'
+    
+    # Calculate progress percentage
+    phase_order = ['research', 'analysis', 'validation', 'reporting']
+    completed_phases = [s.step_type for s in steps if 'completed' in s.step_type]
+    progress_percentage = 0
+    for i, phase in enumerate(phase_order):
+        if any(phase in step for step in completed_phases):
+            progress_percentage = ((i + 1) / len(phase_order)) * 100
+    
+    # Check for pending approvals
+    approval_service = get_approval_service(db)
+    pending_approvals = approval_service.get_pending_approvals(investigation_id)
+    pending_approval = pending_approvals[0] if pending_approvals else None
+    
+    # Extract entities from summary if available
+    entities_identified = []
+    if investigation.summary and isinstance(investigation.summary, dict):
+        entities_identified = investigation.summary.get('entities', [])
+    
+    # Calculate time elapsed
+    time_elapsed_seconds = 0
+    if investigation.started_at:
+        if investigation.completed_at:
+            time_elapsed_seconds = int((investigation.completed_at - investigation.started_at).total_seconds())
+        elif investigation.status in ['active', 'in_progress', 'paused']:
+            time_elapsed_seconds = int((datetime.utcnow() - investigation.started_at).total_seconds())
+    
+    # Estimate cost (simple calculation based on steps)
+    cost_so_far = len(steps) * 0.15  # Rough estimate: $0.15 per step
+    
+    return {
+        "success": True,
+        "data": {
+            "investigation": {
+                "id": str(investigation.investigation_id),
+                "title": investigation.title,
+                "description": investigation.description,
+                "status": investigation.status.value if hasattr(investigation.status, 'value') else str(investigation.status),
+                "priority": investigation.priority.value if hasattr(investigation.priority, 'value') else str(investigation.priority),
+                "created_by": str(investigation.created_by),
+                "tags": investigation.tags or [],
+                "created_at": investigation.created_at.isoformat() if investigation.created_at else None,
+                "updated_at": investigation.updated_at.isoformat() if investigation.updated_at else None,
+            },
+            "current_phase": current_phase,
+            "progress_percentage": int(progress_percentage),
+            "evidence_count": len(evidence),
+            "evidence_by_type": evidence_by_type,
+            "last_activity": last_activity,
+            "pending_approval": pending_approval,
+            "entities_identified": entities_identified,
+            "cost_so_far": round(cost_so_far, 2),
+            "time_elapsed_seconds": time_elapsed_seconds,
+            "steps_count": len(steps)
+        }
+    }
 
 
 # IMPORTANT: Parameterized routes like /{investigation_id} must be defined AFTER all specific routes

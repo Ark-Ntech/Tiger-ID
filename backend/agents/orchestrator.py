@@ -157,6 +157,153 @@ class OrchestratorAgent:
                 logger.warning("Failed to initialize Langgraph workflow, using default orchestrator", error=str(e))
                 self.use_langgraph = False
     
+    async def create_investigation_plan(
+        self,
+        investigation_id: UUID,
+        user_input: str,
+        available_tools: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Generate investigation plan from user input.
+        
+        Args:
+            investigation_id: Investigation ID
+            user_input: User's investigation request
+            available_tools: List of available MCP tools
+            
+        Returns:
+            Investigation plan with entities, goals, tools, estimates
+        """
+        from backend.models.hermes_chat import get_hermes_chat_model
+        
+        logger.info(f"Creating investigation plan for: {user_input[:50]}...")
+        
+        # Use Hermes to parse the investigation request
+        hermes_model = get_hermes_chat_model()
+        
+        parse_prompt = f"""Parse this investigation request and extract key information:
+
+Request: "{user_input}"
+
+Identify:
+1. Target entities (facilities, people, organizations)
+2. Investigation goals (what to find/verify)
+3. Geographic scope (locations, regions)
+4. Time frame (if mentioned)
+5. Specific focus areas (permits, violations, trafficking, etc.)
+
+Respond in JSON format:
+{{
+  "entities": ["entity1", "entity2"],
+  "goals": ["goal1", "goal2"],
+  "locations": ["location1"],
+  "timeframe": "last 5 years",
+  "focus_areas": ["permits", "violations"]
+}}"""
+        
+        result = await hermes_model.chat(
+            message=parse_prompt,
+            tools=None,
+            max_tokens=500,
+            temperature=0.3  # Lower temperature for structured output
+        )
+        
+        # Parse the response (try to extract JSON)
+        import json
+        import re
+        
+        parsed_data = {}
+        if result.get("success"):
+            response = result.get("response", "")
+            # Try to extract JSON
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
+            if json_match:
+                try:
+                    parsed_data = json.loads(json_match.group())
+                except:
+                    logger.warning("Could not parse Hermes JSON response")
+        
+        # Default values if parsing failed
+        entities = parsed_data.get("entities", [])
+        goals = parsed_data.get("goals", ["Investigate potential violations"])
+        locations = parsed_data.get("locations", [])
+        timeframe = parsed_data.get("timeframe", "recent")
+        focus_areas = parsed_data.get("focus_areas", ["general investigation"])
+        
+        # Select appropriate tools based on parsed data
+        tool_selection = ToolSelectionService()
+        selected_tools = tool_selection.select_tools_for_investigation(
+            entities=entities,
+            goals=goals,
+            available_tools=available_tools
+        )
+        
+        # Estimate duration and cost
+        estimates = self._estimate_investigation(selected_tools, len(entities))
+        
+        plan = {
+            "investigation_id": str(investigation_id),
+            "request": user_input,
+            "entities": entities,
+            "goals": goals,
+            "locations": locations,
+            "timeframe": timeframe,
+            "focus_areas": focus_areas,
+            "tools": selected_tools,
+            "duration_estimate_seconds": estimates["duration"],
+            "cost_estimate_usd": estimates["cost"]
+        }
+        
+        logger.info(f"Investigation plan created with {len(selected_tools)} tools")
+        
+        # Emit plan created event
+        await self.event_service.emit(
+            EventType.INVESTIGATION_STARTED.value,
+            {
+                "investigation_id": str(investigation_id),
+                "plan": plan,
+                "requires_approval": True
+            },
+            investigation_id=str(investigation_id)
+        )
+        
+        return plan
+    
+    def _estimate_investigation(
+        self,
+        tools: List[Dict[str, Any]],
+        entity_count: int
+    ) -> Dict[str, int]:
+        """
+        Estimate investigation duration and cost.
+        
+        Args:
+            tools: Selected tools
+            entity_count: Number of entities to investigate
+            
+        Returns:
+            Dictionary with duration (seconds) and cost (USD)
+        """
+        # Base time and cost
+        base_duration = 30  # 30 seconds base
+        base_cost = 0.10    # $0.10 base
+        
+        # Add time per tool
+        tool_duration = len(tools) * 10  # 10 seconds per tool
+        tool_cost = len(tools) * 0.15    # $0.15 per tool
+        
+        # Add time per entity
+        entity_duration = entity_count * 20  # 20 seconds per entity
+        entity_cost = entity_count * 0.25    # $0.25 per entity
+        
+        total_duration = base_duration + tool_duration + entity_duration
+        total_cost = base_cost + tool_cost + entity_cost
+        
+        return {
+            "duration": total_duration,
+            "cost": round(total_cost, 2)
+        }
+    
     async def launch_investigation(
         self,
         investigation_id: UUID,
@@ -499,13 +646,52 @@ class OrchestratorAgent:
         
         # Query database
         if inputs.get("tiger_id"):
+            # Emit agent activity event
+            await self.event_service.emit(
+                "agent_activity",
+                {
+                    "agent": "research_agent",
+                    "action": "query_database",
+                    "status": "running",
+                    "details": f"Querying tiger database for ID: {inputs.get('tiger_id')}",
+                    "timestamp": datetime.now().isoformat()
+                },
+                investigation_id=str(investigation_id)
+            )
+            
             tiger_data = await self.research_agent.query_database(
                 "tiger",
                 {"tiger_id": inputs["tiger_id"]}
             )
             research_results["database"]["tiger"] = tiger_data
+            
+            # Emit completion
+            await self.event_service.emit(
+                "agent_activity",
+                {
+                    "agent": "research_agent",
+                    "action": "query_database",
+                    "status": "completed",
+                    "details": f"Found tiger data: {len(tiger_data)} records",
+                    "timestamp": datetime.now().isoformat()
+                },
+                investigation_id=str(investigation_id)
+            )
         
         if inputs.get("facility") or inputs.get("location"):
+            # Emit agent activity event
+            await self.event_service.emit(
+                "agent_activity",
+                {
+                    "agent": "research_agent",
+                    "action": "query_database",
+                    "status": "running",
+                    "details": f"Querying facility database for: {inputs.get('facility', inputs.get('location'))}",
+                    "timestamp": datetime.now().isoformat()
+                },
+                investigation_id=str(investigation_id)
+            )
+            
             facility_data = await self.research_agent.query_database(
                 "facility",
                 {
@@ -514,6 +700,19 @@ class OrchestratorAgent:
                 }
             )
             research_results["database"]["facility"] = facility_data
+            
+            # Emit completion
+            await self.event_service.emit(
+                "agent_activity",
+                {
+                    "agent": "research_agent",
+                    "action": "query_database",
+                    "status": "completed",
+                    "details": f"Found {len(facility_data.get('facilities', []))} facilities",
+                    "timestamp": datetime.now().isoformat()
+                },
+                investigation_id=str(investigation_id)
+            )
         
         # Query external APIs (with sync to database)
         api_data = await self.research_agent.query_external_apis(
