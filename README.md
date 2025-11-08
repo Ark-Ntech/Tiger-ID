@@ -6,12 +6,14 @@ Modern tiger trafficking investigation platform with AI-powered analysis, real-t
 
 ## ⚡ Quick Start (30 Seconds)
 
-### Option 1: npm (Simplest - NEW!)
+### Option 1: npm (Simplest - Recommended!)
+
 ```bash
 npm start
 ```
 
 ### Option 2: Docker (Recommended for Production)
+
 ```batch
 setup\windows\START_DOCKER.bat
 ```
@@ -27,22 +29,24 @@ setup\windows\START_DOCKER.bat
 
 A comprehensive multi-agent investigative platform for detecting tiger trafficking through:
 
-- 🔍 **AI-Powered Investigation** - Hermes powered agent usage
-- 🐅 **Tiger Re-Identification** - Deep learning stripe pattern analysis
-- 🏢 **Facility Monitoring** - Continuous social media monitoring
+- 🔍 **AI-Powered Investigation** - Hermes-powered agent orchestration with LangGraph
+- 🐅 **Tiger Re-Identification** - Deep learning stripe pattern analysis with 4+ models
+- 🏢 **Facility Monitoring** - Continuous social media and USDA license tracking
 - 👥 **Multi-User Collaboration** - Real-time workspace with role-based access
 - 📊 **Analytics & Reporting** - Comprehensive dashboards and exports
-- 🔌 **API Integration** - REST API for external systems
+- 🔌 **API Integration** - REST API with 27+ route modules
+- 🤖 **MCP Integration** - Model Context Protocol for external tool integration
 
 ---
 
 ## 🏗️ Technology Stack
 
 **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + Redux Toolkit  
-**Backend:** FastAPI + PostgreSQL + pgvector + Redis  
+**Backend:** FastAPI + SQLite/PostgreSQL + pgvector + Redis  
 **Real-time:** WebSocket + Server-Sent Events (SSE)  
 **AI/ML:** PyTorch + Transformers + OmniVinci + MegaDetector + Custom Siamese Networks  
-**Orchestration:** LangGraph (optional) + AutoGen + MCP (Model Context Protocol)
+**Orchestration:** LangGraph + AutoGen + MCP (Model Context Protocol)  
+**ML Infrastructure:** Modal (Serverless GPU compute for all models)
 
 ---
 
@@ -51,15 +55,22 @@ A comprehensive multi-agent investigative platform for detecting tiger trafficki
 ```
 Tiger ID/
 ├── frontend/          # React application (TypeScript)
+│   ├── src/
+│   │   ├── pages/     # 22 pages
+│   │   ├── components/# 47+ components
+│   │   ├── app/       # Redux store & API
+│   │   └── hooks/     # Custom React hooks
 ├── backend/           # FastAPI backend (Python)
-├── setup/             # All setup scripts & docs
-│   ├── windows/       # Batch scripts for Windows
-│   ├── scripts/       # Python setup scripts
-│   └── docs/          # Setup documentation
-├── scripts/           # Data processing scripts
-├── docs/              # Project documentation
+│   ├── api/           # 27 API route modules
+│   ├── services/      # 52 service modules
+│   ├── agents/        # 6 agent modules (LangGraph)
+│   ├── models/        # 8 ML model implementations
+│   ├── mcp_servers/   # 11 MCP server implementations
+│   └── database/     # Database models & migrations
+├── scripts/           # Data processing & setup scripts
+├── docs/              # 23 documentation files
 ├── docker/            # Docker configuration
-└── tests/             # Test suite
+└── tests/             # 59 test files
 ```
 
 **See:** `PROJECT_STRUCTURE.md` for complete details
@@ -91,47 +102,74 @@ Tiger ID/
 ## 🚀 Features
 
 ### Investigation Management
-- Create and track investigations
-- Multi-agent AI analysis
-- Evidence compilation
-- Collaborative workspace
-- Real-time updates
+- Create and track investigations with multi-phase workflows
+- Multi-agent AI analysis (Research, Analysis, Validation, Reporting)
+- Evidence compilation and review
+- Collaborative workspace with real-time updates
+- Approval workflows and status tracking
+- Investigation templates and saved searches
 
 ### Tiger Identification
-- Deep learning re-identification
-- Stripe pattern matching
-- Confidence scoring
-- Historical tracking
+- **4+ Re-ID Models** (all on Modal serverless GPUs):
+  - **TigerReID** - ResNet50-based tiger re-identification
+  - **WildlifeTools** - MegaDescriptor embeddings (A100 GPU)
+  - **RAPID** - Real-time Animal Pattern ReID
+  - **CVWC2019** - Part-pose guided tiger ReID
+- **MegaDetector** - Animal detection v5
+- **OmniVinci** - Multi-modal LLM for image understanding
+- Ensemble mode support (staggered/parallel)
+- Confidence scoring and similarity matching
+- Historical tracking and relationship analysis
 
 ### Facility Monitoring
-- USDA license tracking
-- Social media monitoring
-- Automated crawling
-- Violation history
+- USDA license tracking and validation
+- Social media monitoring (Meta, YouTube)
+- Automated web crawling and scheduling
+- Violation history and compliance tracking
+- Reference data integration (CITES, USFWS)
 
 ### Analytics & Reporting
-- Interactive dashboards
-- Statistical analysis
-- Export to PDF/DOCX/XLSX
-- Audit trails
+- Interactive dashboards with real-time stats
+- Statistical analysis across investigations, tigers, facilities
+- Export to PDF/DOCX/XLSX/CSV/Markdown/JSON
+- Audit trails and activity logs
+- Geographic analytics and mapping
+
+### Model Management
+- Model versioning and performance tracking
+- Fine-tuning interface
+- Model testing and evaluation
+- Model comparison and benchmarking
+- Weight upload and management
+
+### Integration & APIs
+- **MCP Servers** - Firecrawl, Puppeteer, YouTube, Meta, Database
+- **External APIs** - USDA, CITES, USFWS integration
+- REST API with comprehensive endpoints
+- WebSocket for real-time communication
+- Server-Sent Events for live updates
 
 ---
 
 ## 🛠️ Setup Options
 
 ### Option 1: npm (Simplest - Recommended!)
+
 ```bash
 npm run setup    # First time only
 npm start        # Every time after
 ```
+
 ✅ **Cross-platform** - works on Windows, Mac, Linux  
 ✅ **Simple** - one command to start everything  
 ✅ **Modern** - standard npm workflow
 
 ### Option 2: Docker (For Production)
+
 ```batch
 setup\windows\START_DOCKER.bat
 ```
+
 ✅ Everything automatic - database, migrations, test user, all services
 
 **See:** `NPM_COMMANDS.md` for all available commands
@@ -178,11 +216,14 @@ cd frontend && npm run test
 
 ## 📊 Project Stats
 
-- **Frontend:** 50+ TypeScript files, 13 pages, 30+ components
-- **Backend:** 100+ Python files, 16 API route modules, 32+ services
-- **Tests:** Comprehensive test suite with 90%+ coverage
+- **Frontend:** 88 TypeScript/TSX files, 22 pages, 47+ components
+- **Backend:** 147+ Python files, 27 API route modules, 52 service modules
+- **Agents:** 6 agent modules with LangGraph orchestration
+- **Models:** 6 ML models (all on Modal serverless GPUs)
+- **MCP Servers:** 11 MCP server implementations
+- **Tests:** 59 test files with comprehensive coverage
 - **Docker:** 3 compose files for different environments
-- **Documentation:** 20+ guides covering all aspects
+- **Documentation:** 23 guides covering all aspects
 
 ---
 
@@ -221,14 +262,22 @@ Apache License 2.0 - see `LICENSE` file.
 
 ## ✨ Recent Updates
 
-### Modal Integration (Latest - Nov 2025)
+### Latest (Nov 2025)
+- ✅ Fixed missing mutation exports (`useCreateTigerMutation`, `useLaunchInvestigationFromTigerMutation`)
+- ✅ Added `applyTemplate` mutation definition
+- ✅ Fixed import errors in investigation and model version routes
+- ✅ Added new investigation components (AgentActivityFeed, ApprovalModal, BulkActions, etc.)
+- ✅ Added new pages (DatasetManagement, FineTuning, ModelWeights, TigerDetail)
+- ✅ Added model management routes and services (approval, finetuning, model performance, model version)
+
+### Modal Integration (Nov 2025)
 - ✅ All ML models on Modal serverless GPUs
 - ✅ OmniVinci upgraded to fully open source
 - ✅ Zero API keys required
 - ✅ Simplified startup with npm commands
 - ✅ 21/21 tests passing
 
-**See:** `SETUP_COMPLETE.md` for Modal deployment details
+**See:** `docs/MODAL_INTEGRATION_COMPLETE.md` for Modal deployment details
 
 ### React Migration (Complete)
 - ✅ Complete Streamlit → React migration
@@ -241,5 +290,36 @@ Apache License 2.0 - see `LICENSE` file.
 
 ---
 
-**Ready to start?** Just run `npm start` and you're good to go! 🚀
+## 🎯 Key Capabilities
 
+### Multi-Agent Investigation System
+- **Research Agent** - Web search, news monitoring, data gathering
+- **Analysis Agent** - Evidence analysis, relationship mapping, pattern detection
+- **Validation Agent** - Fact-checking, verification, approval workflows
+- **Reporting Agent** - Report generation, documentation, export
+
+### Tiger Re-Identification
+- Upload single or batch images
+- Automatic tiger identification with confidence scores
+- Support for 4+ different Re-ID models
+- Ensemble mode for improved accuracy
+- Historical tracking and relationship analysis
+
+### Investigation Tools
+- **Web Search** - Firecrawl-powered web intelligence
+- **Reverse Image Search** - Find similar images across the web
+- **News Monitoring** - Automated news article tracking
+- **Lead Generation** - AI-powered lead discovery
+- **Relationship Analysis** - Network graph visualization
+- **Evidence Compilation** - Automated evidence gathering and organization
+
+### Model Management
+- Model versioning and tracking
+- Performance metrics and evaluation
+- Fine-tuning interface
+- Model testing and comparison
+- Weight upload and management
+
+---
+
+**Ready to start?** Just run `npm start` and you're good to go! 🚀
