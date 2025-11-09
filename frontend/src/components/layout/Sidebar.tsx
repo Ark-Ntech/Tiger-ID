@@ -6,6 +6,7 @@ import {
   ShieldCheckIcon,
   BuildingOfficeIcon,
   ChartBarIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { cn } from '../../utils/cn'
 
@@ -14,6 +15,7 @@ const navigation = [
   { name: 'Dashboard', to: '/dashboard', icon: ChartBarIcon },
   { name: 'Investigations', to: '/investigations', icon: FolderIcon },
   { name: 'Launch Investigation', to: '/investigations?tab=1', icon: MagnifyingGlassCircleIcon },
+  { name: 'Investigation 2.0', to: '/investigation2', icon: SparklesIcon },
   { name: 'Tigers', to: '/tigers', icon: ShieldCheckIcon },
   { name: 'Facilities', to: '/facilities', icon: BuildingOfficeIcon },
   { name: 'Verification', to: '/verification', icon: ShieldCheckIcon },

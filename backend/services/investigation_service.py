@@ -1,6 +1,6 @@
 """Service layer for Investigation operations"""
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -313,9 +313,10 @@ class InvestigationService:
         user_input: str,
         files: List[Any],
         user_id: UUID,
-        selected_tools: Optional[List[str]] = None
+        selected_tools: Optional[List[str]] = None,
+        tiger_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Launch an investigation with user input and files using Hermes chat orchestrator (or OmniVinci for video)"""
+        """Launch an investigation with user input and files using the OpenAI chat orchestrator (or OmniVinci for video)"""
         from backend.models.hermes_chat import get_hermes_chat_model
         from backend.models.omnivinci import get_omnivinci_model
         from backend.api.mcp_tools_routes import list_mcp_tools
@@ -348,15 +349,18 @@ class InvestigationService:
         self.session.refresh(investigation)
         
         # Process files
-        file_data = []
+        file_data: List[Dict[str, Any]] = []
         video_path = None
+        image_files: List[Tuple[Any, Dict[str, Any]]] = []
         for file in files:
-            file_data.append({
+            entry = {
                 "name": getattr(file, "filename", "unknown"),
                 "type": getattr(file, "content_type", "unknown"),
-            })
-            # Save video files for OmniVinci
-            if getattr(file, "content_type", "").startswith("video/"):
+            }
+            file_data.append(entry)
+            content_type = (getattr(file, "content_type", "") or "").lower()
+            
+            if content_type.startswith("video/"):
                 try:
                     video_bytes = await file.read()
                     with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
@@ -364,9 +368,112 @@ class InvestigationService:
                         video_path = Path(tmp_file.name)
                 except Exception as e:
                     logger.warning(f"Could not save video file: {e}")
+            elif content_type.startswith("image/"):
+                image_files.append((file, entry))
+        
+        tiger_id_value = str(tiger_id) if tiger_id else None
+        tiger_event_payload: Optional[Dict[str, Any]] = None
+        tiger_image_urls: List[str] = []
+        tiger_service = None
+        
+        if (image_files and not tiger_id_value) or tiger_id_value:
+            from backend.services.tiger_service import TigerService
+            tiger_service = TigerService(self.session)
+        
+        if tiger_service and image_files and not tiger_id_value:
+            # Attempt to identify existing tiger from uploaded images
+            for upload_file, entry in image_files:
+                try:
+                    await upload_file.seek(0)
+                    identify_result = await tiger_service.identify_tiger_from_image(
+                        image=upload_file,
+                        user_id=user_id,
+                        similarity_threshold=0.7,
+                        model_name=None
+                    )
+                    if identify_result.get("identified") and identify_result.get("tiger_id"):
+                        tiger_id_value = str(identify_result.get("tiger_id"))
+                        entry["identified_tiger_id"] = tiger_id_value
+                        entry["tiger_confidence"] = identify_result.get("confidence")
+                        tiger_event_payload = {
+                            "tiger_id": tiger_id_value,
+                            "tiger_name": identify_result.get("tiger_name"),
+                            "confidence": identify_result.get("confidence"),
+                            "is_new": False,
+                        }
+                        logger.info(f"Identified tiger {tiger_id_value} from uploaded image {entry['name']}")
+                        break
+                except Exception as e:
+                    logger.warning(f"Automatic tiger identification failed: {e}")
+                finally:
+                    try:
+                        await upload_file.seek(0)
+                    except Exception:
+                        pass
+        
+        if tiger_service and image_files and not tiger_id_value:
+            # Register new tiger from uploaded images if none identified
+            try:
+                for upload_file, _ in image_files:
+                    try:
+                        await upload_file.seek(0)
+                    except Exception:
+                        pass
+                registered = await tiger_service.register_new_tiger(
+                    name=f"Investigation Tiger {datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                    alias=None,
+                    images=[upload_file for upload_file, _ in image_files],
+                    notes="Registered via investigation assistant upload",
+                    model_name=None,
+                    user_id=user_id
+                )
+                if registered and registered.get("tiger_id"):
+                    tiger_id_value = str(registered.get("tiger_id"))
+                    tiger_event_payload = {
+                        "tiger_id": tiger_id_value,
+                        "tiger_name": registered.get("name"),
+                        "confidence": None,
+                        "is_new": True,
+                    }
+                    for _, entry in image_files:
+                        entry["registered_tiger_id"] = tiger_id_value
+                    logger.info(f"Registered new tiger {tiger_id_value} from investigation upload")
+            except Exception as e:
+                logger.warning(f"Failed to register new tiger from uploaded images: {e}")
+            finally:
+                for upload_file, _ in image_files:
+                    try:
+                        await upload_file.seek(0)
+                    except Exception:
+                        pass
+        
+        if tiger_service and tiger_id_value:
+            try:
+                tiger_details = await tiger_service.get_tiger(UUID(tiger_id_value))
+                if tiger_details:
+                    tiger_images = tiger_details.get("images") or []
+                    tiger_image_urls = [
+                        img.get("image_path")
+                        for img in tiger_images
+                        if isinstance(img, dict) and img.get("image_path")
+                    ]
+                    if tiger_event_payload is None:
+                        tiger_event_payload = {
+                            "tiger_id": tiger_id_value,
+                            "tiger_name": tiger_details.get("name"),
+                            "confidence": None,
+                            "is_new": False,
+                        }
+                    if tiger_image_urls:
+                        tiger_event_payload["images"] = tiger_image_urls
+            except Exception as e:
+                logger.warning(f"Failed to load tiger details for {tiger_id_value}: {e}")
+        
+        if tiger_event_payload and tiger_image_urls and "images" not in tiger_event_payload:
+            tiger_event_payload["images"] = tiger_image_urls
         
         try:
-            # Get available tools for Hermes/OmniVinci
+            # Get available tools for OpenAI chat / OmniVinci
             # Use next() to get session from generator
             session = next(get_db_session())
             try:
@@ -461,6 +568,12 @@ Provide a detailed analysis of the video content, identifying any tigers, their 
                         "selected_tools": selected_tools or [],
                         "files": file_data
                     }
+                    if tiger_id_value:
+                        user_inputs["tiger_id"] = tiger_id_value
+                    if tiger_image_urls:
+                        user_inputs["images"] = tiger_image_urls
+                    if tiger_event_payload:
+                        user_inputs["tiger_metadata"] = tiger_event_payload
                     
                     # Launch full investigation workflow
                     result = await orchestrator.launch_investigation(
@@ -486,11 +599,11 @@ Provide a detailed analysis of the video content, identifying any tigers, their 
                     orchestrator_session.close()
                 
             else:
-                # Use Hermes-3 for chat/clarification (quick responses)
-                logger.info("Using Hermes-3 chat for quick response")
+                # Use the OpenAI chat model for quick responses and clarification
+                logger.info("Using OpenAI chat model for quick response")
                 hermes_model = get_hermes_chat_model()
                 
-                # Format tools for Hermes
+                # Format tools for the OpenAI chat model
                 hermes_tools = [
                     {
                         "name": tool.get("name"),
@@ -500,7 +613,7 @@ Provide a detailed analysis of the video content, identifying any tigers, their 
                     for tool in all_tools
                 ]
                 
-                # Chat with Hermes (it has native tool calling)
+                # Chat with the OpenAI model (it has native tool calling)
                 result = await hermes_model.chat(
                     message=user_input,
                     tools=hermes_tools,
@@ -509,13 +622,13 @@ Provide a detailed analysis of the video content, identifying any tigers, their 
                     temperature=0.7
                 )
                 
-                # Extract response from Hermes
+                # Extract response from the OpenAI model
                 if result.get("success"):
                     response_text = result.get("response", "")
                     tool_calls = result.get("tool_calls", [])
                     
                     if tool_calls:
-                        logger.info(f"Hermes requested {len(tool_calls)} tool calls")
+                        logger.info(f"OpenAI chat requested {len(tool_calls)} tool calls")
                         # Execute tool calls
                         for tool_call in tool_calls:
                             tool_name = tool_call.get("name")
@@ -549,11 +662,11 @@ Provide a detailed analysis of the video content, identifying any tigers, their 
                     response_message = response_text
                 else:
                     error_msg = result.get("error", "Unknown error")
-                    logger.error(f"Hermes chat failed: {error_msg}")
+                    logger.error(f"OpenAI chat failed: {error_msg}")
                     response_message = f"Chat error: {error_msg}. Please try again."
                 
-                step_type = "hermes_chat"
-                agent_name = "hermes"
+                step_type = "openai_chat"
+                agent_name = "openai"
             
             # Log investigation step
             self.add_investigation_step(
@@ -571,13 +684,30 @@ Provide a detailed analysis of the video content, identifying any tigers, their 
                 except Exception as e:
                     logger.warning(f"Could not delete temporary video file: {e}")
             
-            return {
+            if tiger_event_payload:
+                try:
+                    from backend.services.websocket_service import get_websocket_manager
+                    ws_manager = get_websocket_manager()
+                    await ws_manager.send_event(
+                        event_type="tiger_identified",
+                        data=tiger_event_payload,
+                        investigation_id=str(investigation_id)
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send tiger identification event: {e}")
+            
+            result_payload = {
                 "investigation_id": str(investigation_id),
                 "response": response_message,
                 "next_steps": [],
                 "evidence_count": 0,
                 "status": "in_progress"
             }
+            if tiger_id_value:
+                result_payload["tiger_id"] = tiger_id_value
+            if tiger_event_payload:
+                result_payload["tiger_metadata"] = tiger_event_payload
+            return result_payload
             
         except Exception as e:
             logger.error(f"Error in launch_investigation: {e}", exc_info=True)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   useGetInvestigationsQuery,
@@ -9,7 +9,9 @@ import {
   useBulkArchiveInvestigationsMutation,
   useCreateInvestigationMutation,
   useLaunchInvestigationMutation,
-  useGetMCPToolsQuery
+  useGetMCPToolsQuery,
+  useIdentifyTigerImageMutation,
+  useRegisterTigerMutation
 } from '../app/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 import AgentActivityFeed from '../components/investigations/AgentActivityFeed'
@@ -17,6 +19,7 @@ import Card from '../components/common/Card'
 import Button from '../components/common/Button'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Alert from '../components/common/Alert'
+import Badge from '../components/common/Badge'
 import InvestigationCard from '../components/investigations/InvestigationCard'
 import BulkActions from '../components/investigations/BulkActions'
 import ApprovalModal from '../components/investigations/ApprovalModal'
@@ -57,6 +60,8 @@ const Investigations = () => {
   // Assistant Tab specific hooks
   const [createInvestigation] = useCreateInvestigationMutation()
   const [launchInvestigation] = useLaunchInvestigationMutation()
+  const [identifyTigerImage] = useIdentifyTigerImageMutation()
+  const [registerTiger] = useRegisterTigerMutation()
   const { data: mcpToolsData, isLoading: toolsLoading, error: toolsError } = useGetMCPToolsQuery()
   
   // Assistant Tab state
@@ -64,11 +69,20 @@ const Investigations = () => {
   const [assistantInput, setAssistantInput] = useState('')
   const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set())
   const [showToolSelector, setShowToolSelector] = useState(false)
+  const [showTigerUpload, setShowTigerUpload] = useState(false)
   const [assistantLoading, setAssistantLoading] = useState(false)
   const [assistantError, setAssistantError] = useState<string | null>(null)
   const [currentInvestigationId, setCurrentInvestigationId] = useState<string | null>(null)
   const [launchProgress, setLaunchProgress] = useState<any[]>([])
   const [agentActivities, setAgentActivities] = useState<any[]>([])
+  const [uploadedTigerImages, setUploadedTigerImages] = useState<File[]>([])
+  const [uploadedTigerId, setUploadedTigerId] = useState<string | null>(null)
+  const [tigerMetadata, setTigerMetadata] = useState<{ name?: string | null; confidence?: number | null; isNew?: boolean } | null>(null)
+  const [tigerUploadLoading, setTigerUploadLoading] = useState(false)
+  const [tigerUploadError, setTigerUploadError] = useState<string | null>(null)
+  const [tigerImagePreviews, setTigerImagePreviews] = useState<string[]>([])
+
+  const tigerFileInputRef = useRef<HTMLInputElement | null>(null)
 
   // WebSocket for Assistant and live updates
   const { isConnected } = useWebSocket({
@@ -110,6 +124,19 @@ const Investigations = () => {
       } else if (message.type === 'investigation_created') {
         // Refetch when new investigation created
         refetch()
+      } else if (message.type === 'tiger_identified') {
+        const data = message.data || {}
+        if (data.tiger_id) {
+          setUploadedTigerId(data.tiger_id)
+          setTigerMetadata({
+            name: data.tiger_name,
+            confidence: typeof data.confidence === 'number' ? data.confidence : null,
+            isNew: !!data.is_new,
+          })
+          setTigerUploadError(null)
+          setTigerUploadLoading(false)
+          setShowTigerUpload(true)
+        }
       }
     },
     autoConnect: true
@@ -136,6 +163,123 @@ const Investigations = () => {
   // ========== DATA DERIVATION (CONTINUED) ==========
   const mcpServers = mcpToolsData?.data?.servers || {}
 
+  const clearTigerSelection = useCallback(() => {
+    setUploadedTigerImages([])
+    setUploadedTigerId(null)
+    setTigerMetadata(null)
+    setTigerUploadError(null)
+    setTigerUploadLoading(false)
+    setTigerImagePreviews(prev => {
+      prev.forEach(url => URL.revokeObjectURL(url))
+      return []
+    })
+    if (tigerFileInputRef.current) {
+      tigerFileInputRef.current.value = ''
+    }
+  }, [])
+
+  const parseTigerError = (err: any): string => {
+    if (!err) return 'Unknown error'
+    if (err?.data?.detail) {
+      if (Array.isArray(err.data.detail)) {
+        return err.data.detail.map((item: any) => item.msg || JSON.stringify(item)).join(', ')
+      }
+      if (typeof err.data.detail === 'string') {
+        return err.data.detail
+      }
+      return JSON.stringify(err.data.detail)
+    }
+    if (err?.data?.message) {
+      return err.data.message
+    }
+    if (err?.message) {
+      return err.message
+    }
+    return typeof err === 'string' ? err : 'Unknown error'
+  }
+
+  const processTigerFiles = useCallback(async (files: File[]) => {
+    if (!files || files.length === 0) {
+      clearTigerSelection()
+      return
+    }
+
+    const imageFiles = files.filter(file => file.type.startsWith('image/'))
+    if (imageFiles.length === 0) {
+      setTigerUploadError('Only image files are supported.')
+      clearTigerSelection()
+      return
+    }
+
+    setTigerUploadLoading(true)
+    setTigerUploadError(null)
+    setUploadedTigerImages(imageFiles)
+    setTigerMetadata(null)
+    setUploadedTigerId(null)
+    setTigerImagePreviews(prev => {
+      prev.forEach(url => URL.revokeObjectURL(url))
+      return imageFiles.map(file => URL.createObjectURL(file))
+    })
+
+    try {
+      const primaryImage = imageFiles[0]
+      const identifyResult = await identifyTigerImage({ image: primaryImage }).unwrap()
+      const identifiedData = identifyResult?.data
+
+      if (identifiedData?.identified && identifiedData?.tiger_id) {
+        setUploadedTigerId(identifiedData.tiger_id)
+        setTigerMetadata({
+          name: identifiedData.tiger_name,
+          confidence: identifiedData.confidence,
+          isNew: false,
+        })
+        return
+      }
+
+      const defaultName = `Unidentified Tiger ${new Date().toISOString()}`
+      const createResult = await registerTiger({
+        name: defaultName,
+        images: imageFiles,
+        notes: 'Automatically registered from investigation assistant upload',
+      }).unwrap()
+
+      if (createResult?.data?.tiger_id) {
+        setUploadedTigerId(createResult.data.tiger_id)
+        setTigerMetadata({
+          name: createResult.data.name || defaultName,
+          confidence: null,
+          isNew: true,
+        })
+      } else {
+        throw new Error('Tiger created but ID was not returned.')
+      }
+    } catch (err: any) {
+      setTigerUploadError(parseTigerError(err))
+      clearTigerSelection()
+    } finally {
+      setTigerUploadLoading(false)
+    }
+  }, [clearTigerSelection, identifyTigerImage, registerTiger])
+
+  const handleTigerFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files ? Array.from(event.target.files) : []
+    processTigerFiles(files)
+    if (tigerFileInputRef.current) {
+      tigerFileInputRef.current.value = ''
+    }
+  }
+
+  const handleTigerDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const files = Array.from(event.dataTransfer.files)
+    processTigerFiles(files)
+  }
+
+  const handleTigerDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
   // ========== ALL useEffect CALLS (USING DERIVED DATA) ==========
   // Sync activeTab with URL
   useEffect(() => {
@@ -156,6 +300,12 @@ const Investigations = () => {
       }])
     }
   }, [activeTab, assistantMessages.length])
+
+  useEffect(() => {
+    return () => {
+      tigerImagePreviews.forEach(url => URL.revokeObjectURL(url))
+    }
+  }, [tigerImagePreviews])
 
   // Fetch extended info for all investigations
   useEffect(() => {
@@ -260,6 +410,7 @@ const Investigations = () => {
   }
 
   const isListTab = activeTab === 0
+  const assistantSendDisabled = ((!assistantInput.trim() && selectedTools.size === 0) || assistantLoading || tigerUploadLoading)
   const ActiveTabComponent = tabs[activeTab]?.component
 
   return (
@@ -460,19 +611,29 @@ const Investigations = () => {
               {/* Chat Interface */}
               <div className={agentActivities.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
                 <Card className="h-[calc(100vh-16rem)] flex flex-col">
-                  <div className="border-b pb-4 mb-4 flex items-center justify-between">
+                  <div className="border-b pb-4 mb-4 flex items-center justify-between gap-4">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">Investigation Assistant</h3>
-                      <p className="text-sm text-gray-500">Select tools and describe your investigation</p>
+                      <p className="text-sm text-gray-500">Select tools, upload tiger images, and describe your investigation</p>
                     </div>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowToolSelector(!showToolSelector)}
-                      className="flex items-center gap-2"
-                    >
-                      <WrenchScrewdriverIcon className="h-5 w-5" />
-                      {showToolSelector ? 'Hide' : 'Select'} Tools ({selectedTools.size})
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowTigerUpload(!showTigerUpload)}
+                        className="flex items-center gap-2"
+                      >
+                        <PhotoIcon className="h-5 w-5" />
+                        {showTigerUpload ? 'Hide' : 'Upload'} Tiger ({uploadedTigerImages.length})
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowToolSelector(!showToolSelector)}
+                        className="flex items-center gap-2"
+                      >
+                        <WrenchScrewdriverIcon className="h-5 w-5" />
+                        {showToolSelector ? 'Hide' : 'Select'} Tools ({selectedTools.size})
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Tool Selector */}
@@ -510,6 +671,102 @@ const Investigations = () => {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tiger Upload */}
+                  {showTigerUpload && (
+                    <div className="border-b pb-4 mb-4">
+                      <div
+                        className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-lg transition-colors ${
+                          tigerUploadLoading ? 'border-primary-500' : 'border-gray-300 hover:border-primary-500'
+                        }`}
+                        onDragOver={handleTigerDragOver}
+                        onDrop={handleTigerDrop}
+                      >
+                        <div className="space-y-1 text-center">
+                          <PhotoIcon className="mx-auto h-12 w-12 text-gray-400" />
+                          <div className="flex text-sm text-gray-600 items-center justify-center gap-1">
+                            <label
+                              htmlFor="assistant-tiger-file-upload"
+                              className="relative cursor-pointer bg-white rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500"
+                            >
+                              <span>Select images</span>
+                              <input
+                                id="assistant-tiger-file-upload"
+                                name="assistant-tiger-file-upload"
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="sr-only"
+                                onChange={handleTigerFileSelect}
+                                ref={tigerFileInputRef}
+                              />
+                            </label>
+                            <p>or drag and drop</p>
+                          </div>
+                          <p className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB each (max 5 images recommended)</p>
+                        </div>
+                      </div>
+
+                      {tigerUploadLoading && (
+                        <div className="mt-4 flex items-center gap-2 text-sm text-primary-600">
+                          <LoadingSpinner size="sm" />
+                          <span>Processing tiger images...</span>
+                        </div>
+                      )}
+
+                      {tigerUploadError && (
+                        <div className="mt-4">
+                          <Alert type="error">
+                            <span className="text-sm">{tigerUploadError}</span>
+                          </Alert>
+                        </div>
+                      )}
+
+                      {uploadedTigerImages.length > 0 && (
+                        <div className="mt-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-gray-700">Uploaded Images</h4>
+                            <Button variant="outline" size="sm" onClick={clearTigerSelection}>
+                              Clear
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap gap-4">
+                            {tigerImagePreviews.map((src, index) => (
+                              <div key={index} className="w-24 h-24 rounded-md overflow-hidden border border-gray-200 shadow-sm">
+                                <img
+                                  src={src}
+                                  alt={`Uploaded tiger ${index + 1}`}
+                                  className="object-cover w-full h-full"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          {tigerMetadata && (
+                            <div className="rounded-md border border-primary-200 bg-primary-50 p-3 text-sm text-primary-900">
+                              <p className="font-semibold">
+                                {tigerMetadata.isNew ? 'New tiger registered' : 'Tiger identified'}
+                              </p>
+                              <p className="mt-1">
+                                <span className="font-medium">Name:</span>{' '}
+                                {tigerMetadata.name || 'Unknown'}
+                              </p>
+                              {typeof tigerMetadata.confidence === 'number' && (
+                                <p>
+                                  <span className="font-medium">Confidence:</span>{' '}
+                                  {(tigerMetadata.confidence * 100).toFixed(1)}%
+                                </p>
+                              )}
+                              {uploadedTigerId && (
+                                <p className="mt-1 text-xs text-primary-700 break-all">
+                                  <span className="font-medium">Tiger ID:</span> {uploadedTigerId}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -569,12 +826,13 @@ const Investigations = () => {
                   <form 
                     onSubmit={async (e) => {
                       e.preventDefault()
-                      if (!assistantInput.trim()) return
+                      if (!assistantInput.trim() && selectedTools.size === 0) return
+                      if (tigerUploadLoading) return
 
                       const userMessage = {
                         id: Date.now().toString(),
                         role: 'user',
-                        content: assistantInput,
+                        content: assistantInput || 'Launch investigation',
                         timestamp: new Date().toISOString()
                       }
 
@@ -607,9 +865,23 @@ const Investigations = () => {
                           // Launch investigation
                           const launchResult = await launchInvestigation({
                             investigation_id: newId,
-                            user_input: assistantInput,
-                            selected_tools: selectedTools.size > 0 ? Array.from(selectedTools) : undefined
+                            user_input: assistantInput || 'Launch investigation',
+                            selected_tools: selectedTools.size > 0 ? Array.from(selectedTools) : undefined,
+                            tiger_id: uploadedTigerId || undefined
                           }).unwrap()
+
+                          const resultData = (launchResult.data as any) || {}
+                          if (resultData?.tiger_id) {
+                            setUploadedTigerId(resultData.tiger_id)
+                            if (resultData.tiger_metadata) {
+                              setTigerMetadata({
+                                name: resultData.tiger_metadata.tiger_name ?? tigerMetadata?.name ?? null,
+                                confidence: resultData.tiger_metadata.confidence ?? tigerMetadata?.confidence ?? null,
+                                isNew: resultData.tiger_metadata.is_new ?? tigerMetadata?.isNew ?? false,
+                              })
+                              setShowTigerUpload(true)
+                            }
+                          }
 
                           setAssistantMessages(prev => [...prev, {
                             id: (Date.now() + 2).toString(),
@@ -623,9 +895,23 @@ const Investigations = () => {
                           // Continue with existing investigation
                           const launchResult = await launchInvestigation({
                             investigation_id: currentInvestigationId,
-                            user_input: assistantInput,
-                            selected_tools: selectedTools.size > 0 ? Array.from(selectedTools) : undefined
+                            user_input: assistantInput || 'Launch investigation',
+                            selected_tools: selectedTools.size > 0 ? Array.from(selectedTools) : undefined,
+                            tiger_id: uploadedTigerId || undefined
                           }).unwrap()
+
+                          const resultData = (launchResult.data as any) || {}
+                          if (resultData?.tiger_id) {
+                            setUploadedTigerId(resultData.tiger_id)
+                            if (resultData.tiger_metadata) {
+                              setTigerMetadata({
+                                name: resultData.tiger_metadata.tiger_name ?? tigerMetadata?.name ?? null,
+                                confidence: resultData.tiger_metadata.confidence ?? tigerMetadata?.confidence ?? null,
+                                isNew: resultData.tiger_metadata.is_new ?? tigerMetadata?.isNew ?? false,
+                              })
+                              setShowTigerUpload(true)
+                            }
+                          }
 
                           setAssistantMessages(prev => [...prev, {
                             id: (Date.now() + 2).toString(),
@@ -655,9 +941,9 @@ const Investigations = () => {
                       onChange={(e) => setAssistantInput(e.target.value)}
                       placeholder="Describe what you'd like to investigate..."
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      disabled={assistantLoading}
+                      disabled={assistantLoading || tigerUploadLoading}
                     />
-                    <Button type="submit" variant="primary" disabled={!assistantInput.trim() || assistantLoading}>
+                    <Button type="submit" variant="primary" disabled={assistantSendDisabled}>
                       <PaperAirplaneIcon className="h-5 w-5" />
                     </Button>
                   </form>

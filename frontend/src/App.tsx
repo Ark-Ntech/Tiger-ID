@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard'
 import Investigations from './pages/Investigations'
 import InvestigationWorkspace from './pages/InvestigationWorkspace'
 import LaunchInvestigation from './pages/LaunchInvestigation'
+import Investigation2 from './pages/Investigation2'
 import Tigers from './pages/Tigers'
 import TigerDetail from './pages/TigerDetail'
 import Facilities from './pages/Facilities'
@@ -44,6 +45,7 @@ function App() {
           <Route path="investigations" element={<Investigations />} />
           <Route path="investigations/:id" element={<InvestigationWorkspace />} />
           <Route path="investigations/launch" element={<Navigate to="/investigations?tab=1" replace />} />
+          <Route path="investigation2" element={<Investigation2 />} />
           <Route path="tigers" element={<Tigers />} />
           <Route path="tigers/:id" element={<TigerDetail />} />
           <Route path="facilities" element={<Facilities />} />
