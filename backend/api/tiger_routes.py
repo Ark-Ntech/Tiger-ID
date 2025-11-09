@@ -455,7 +455,8 @@ async def launch_investigation_from_tiger(
             user_input=f"Find where tiger {tiger_name} (ID: {str(tiger_id)[:8]}) appears across the web. Search for images, news articles, social media posts, and any other appearances of this tiger.",
             files=[],
             user_id=current_user.user_id,
-            selected_tools=available_tools
+            selected_tools=available_tools,
+            tiger_id=str(tiger_id)
         )
         
         return SuccessResponse(

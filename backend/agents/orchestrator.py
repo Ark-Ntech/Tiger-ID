@@ -178,7 +178,7 @@ class OrchestratorAgent:
         
         logger.info(f"Creating investigation plan for: {user_input[:50]}...")
         
-        # Use Hermes to parse the investigation request
+        # Use the OpenAI chat model to parse the investigation request
         hermes_model = get_hermes_chat_model()
         
         parse_prompt = f"""Parse this investigation request and extract key information:
@@ -221,7 +221,7 @@ Respond in JSON format:
                 try:
                     parsed_data = json.loads(json_match.group())
                 except:
-                    logger.warning("Could not parse Hermes JSON response")
+                    logger.warning("Could not parse OpenAI chat JSON response")
         
         # Default values if parsing failed
         entities = parsed_data.get("entities", [])
@@ -643,6 +643,9 @@ Respond in JSON format:
             "external_apis": {},
             "evidence": []
         }
+        tiger_info: Optional[Dict[str, Any]] = None
+        tiger_metadata = inputs.get("tiger_metadata") or {}
+        tiger_image_sources: List[str] = []
         
         # Query database
         if inputs.get("tiger_id"):
@@ -664,6 +667,18 @@ Respond in JSON format:
                 {"tiger_id": inputs["tiger_id"]}
             )
             research_results["database"]["tiger"] = tiger_data
+            tiger_info = tiger_data.get("tiger")
+            if tiger_info:
+                tiger_images = tiger_info.get("images") or []
+                tiger_image_sources = [
+                    img.get("image_path")
+                    for img in tiger_images
+                    if isinstance(img, dict) and img.get("image_path")
+                ]
+            if tiger_metadata.get("images"):
+                for image in tiger_metadata.get("images", []):
+                    if isinstance(image, str) and image not in tiger_image_sources:
+                        tiger_image_sources.append(image)
             
             # Emit completion
             await self.event_service.emit(
@@ -678,6 +693,7 @@ Respond in JSON format:
                 investigation_id=str(investigation_id)
             )
         
+        ref_matches = {"has_reference_match": False}
         if inputs.get("facility") or inputs.get("location"):
             # Emit agent activity event
             await self.event_service.emit(
@@ -753,6 +769,54 @@ Respond in JSON format:
         # Web intelligence gathering
         web_intelligence = {}
         
+        # Tiger-specific intelligence
+        tiger_names: List[str] = []
+        if tiger_info:
+            if tiger_info.get("name"):
+                tiger_names.append(tiger_info["name"])
+            if tiger_info.get("alias"):
+                tiger_names.append(tiger_info["alias"])
+        if tiger_metadata.get("tiger_name"):
+            tiger_names.append(tiger_metadata["tiger_name"])
+        
+        if tiger_names:
+            unique_tiger_names = []
+            for name in tiger_names:
+                if isinstance(name, str):
+                    trimmed = name.strip()
+                    if trimmed and trimmed not in unique_tiger_names:
+                        unique_tiger_names.append(trimmed)
+            tiger_search_results = []
+            for name in unique_tiger_names[:3]:
+                search_query = f'"{name}" tiger'
+                try:
+                    web_results = await self.research_agent.search_web(
+                        query=search_query,
+                        limit=10,
+                        investigation_id=investigation_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Web search for tiger {name} failed: {e}")
+                    web_results = {"error": str(e), "results": []}
+                
+                try:
+                    news_results = await self.research_agent.search_news(
+                        query=search_query,
+                        days=60,
+                        limit=10
+                    )
+                except Exception as e:
+                    logger.warning(f"News search for tiger {name} failed: {e}")
+                    news_results = {"error": str(e), "articles": []}
+                
+                tiger_search_results.append({
+                    "name": name,
+                    "web_results": web_results,
+                    "news_results": news_results
+                })
+            if tiger_search_results:
+                web_intelligence["tiger_search"] = tiger_search_results
+        
         # Check if facility is in reference dataset
         facility_name = inputs.get("facility")
         usda_license = inputs.get("usda_license")
@@ -787,16 +851,21 @@ Respond in JSON format:
             web_intelligence["web_search"] = web_search_results
         
         # Reverse image search if tiger image provided
-        if inputs.get("images"):
-            image_urls = inputs.get("images", [])
+        image_urls = inputs.get("images") or tiger_image_sources
+        if image_urls:
+            unique_images = []
+            for url in image_urls:
+                if isinstance(url, str) and url not in unique_images:
+                    unique_images.append(url)
             reverse_search_results = []
-            for image_url in image_urls[:3]:  # Limit to 3 images
+            for image_url in unique_images[:3]:  # Limit to 3 images
                 reverse_results = await self.research_agent.reverse_image_search(
                     image_url=image_url,
                     investigation_id=investigation_id
                 )
                 reverse_search_results.append(reverse_results)
-            web_intelligence["reverse_image_search"] = reverse_search_results
+            if reverse_search_results:
+                web_intelligence["reverse_image_search"] = reverse_search_results
         
         # Generate leads if location specified
         location = inputs.get("location")
@@ -862,6 +931,38 @@ Respond in JSON format:
                     "extracted_text": result.get("snippet", ""),
                     "relevance_score": 0.6
                 })
+        
+        if web_intelligence.get("tiger_search"):
+            for search_entry in web_intelligence["tiger_search"]:
+                name = search_entry.get("name")
+                web_results = (search_entry.get("web_results") or {}).get("results", [])
+                news_results = (search_entry.get("news_results") or {}).get("articles", [])
+                
+                for result in web_results[:5]:
+                    evidence.append({
+                        "type": "tiger_web_search",
+                        "source_type": "web_search",
+                        "source_url": result.get("url", ""),
+                        "content": {
+                            "query_name": name,
+                            "result": result
+                        },
+                        "extracted_text": result.get("snippet", ""),
+                        "relevance_score": 0.75
+                    })
+                
+                for article in news_results[:5]:
+                    evidence.append({
+                        "type": "tiger_news",
+                        "source_type": "news_search",
+                        "source_url": article.get("url", ""),
+                        "content": {
+                            "query_name": name,
+                            "article": article
+                        },
+                        "extracted_text": article.get("snippet", ""),
+                        "relevance_score": 0.75
+                    })
         
         if web_intelligence.get("leads"):
             leads_data = web_intelligence["leads"]

@@ -44,12 +44,12 @@ class ToolSelectionService:
         # (handled separately in research agent)
         
         # Web search - use if there's text query or facility/tiger names
-        if inputs.get("query") or inputs.get("text"):
+        if inputs.get("query") or inputs.get("text") or inputs.get("tiger_id"):
             if self._should_use_web_search(inputs):
                 selected_tools.append("web_search")
         
         # News search - use if facility name or location provided
-        if inputs.get("facility") or inputs.get("location"):
+        if inputs.get("facility") or inputs.get("location") or inputs.get("tiger_id"):
             selected_tools.append("news_search")
             
             # Also check reference facilities
@@ -57,19 +57,19 @@ class ToolSelectionService:
                 selected_tools.append("check_reference_facilities")
         
         # YouTube search - use if facility name or location provided
-        if inputs.get("facility") or inputs.get("location"):
+        if inputs.get("facility") or inputs.get("location") or inputs.get("tiger_id"):
             selected_tools.append("youtube_search")
         
         # Meta search - use if facility name or social media links detected
-        if inputs.get("facility") or inputs.get("social_media_links"):
+        if inputs.get("facility") or inputs.get("social_media_links") or inputs.get("tiger_id"):
             selected_tools.append("meta_search")
         
         # Social media intelligence - auto-select when facility or location provided
-        if inputs.get("facility") or inputs.get("location"):
+        if inputs.get("facility") or inputs.get("location") or inputs.get("tiger_id"):
             selected_tools.append("social_media_intelligence")
         
         # Reverse image search - use if images provided
-        if inputs.get("images") and len(inputs.get("images", [])) > 0:
+        if (inputs.get("images") and len(inputs.get("images", [])) > 0) or inputs.get("tiger_id"):
             selected_tools.append("reverse_image_search")
         
         # Lead generation - use if location provided or suspicious patterns detected

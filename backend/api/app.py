@@ -11,6 +11,7 @@ from pathlib import Path
 from backend.api.routes import router
 from backend.api.auth_routes import router as auth_router
 from backend.api.investigation_routes import router as investigation_router
+from backend.api.investigation2_routes import router as investigation2_router
 from backend.api.mcp_tools_routes import router as mcp_tools_router
 from backend.api.sse_routes import router as sse_router
 from backend.api.event_routes import router as event_router
@@ -217,6 +218,7 @@ def create_app() -> FastAPI:
     app.include_router(tiger_router, prefix="/api/v1")  # Tiger identification routes (register before main router to avoid conflicts)
     app.include_router(mcp_tools_router)  # MCP tools routes (register FIRST to ensure /mcp-tools matches before /{investigation_id})
     app.include_router(investigation_router)  # Investigation tools routes (register after mcp_tools_router to avoid route conflicts)
+    app.include_router(investigation2_router, prefix="/api/v1/investigations2", tags=["investigations2"])  # Investigation 2.0 routes
     app.include_router(router, prefix="/api/v1", tags=["api"])
     app.include_router(sse_router)  # SSE routes for real-time updates
     app.include_router(event_router)  # Event history routes

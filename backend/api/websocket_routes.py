@@ -114,6 +114,8 @@ async def websocket_endpoint(
                     content = message.get("content")
                     selected_tools = message.get("selected_tools", [])
                     
+                    tiger_id_value = message.get("tiger_id")
+                    
                     if investigation_id and content:
                         from uuid import UUID
                         from backend.services.investigation_service import InvestigationService
@@ -143,7 +145,8 @@ async def websocket_endpoint(
                                     user_input=content,
                                     files=[],
                                     user_id=user_uuid,
-                                    selected_tools=selected_tools if selected_tools else None
+                                    selected_tools=selected_tools if selected_tools else None,
+                                    tiger_id=tiger_id_value
                                 )
                                 
                                 logger.info(f"Investigation launched successfully. Response: {result.get('response', '')[:100]}")

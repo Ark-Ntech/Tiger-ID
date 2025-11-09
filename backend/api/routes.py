@@ -180,6 +180,7 @@ async def launch_investigation(
     user_input: Optional[str] = Form(None),
     selected_tools: Optional[List[str]] = Form(None),
     files: Optional[List[UploadFile]] = File(None),
+    tiger_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -189,7 +190,11 @@ async def launch_investigation(
     
     logger = get_logger(__name__)
     
-    logger.info(f"Launch investigation request: investigation_id={investigation_id}, user_input={user_input[:50] if user_input else None}, selected_tools={selected_tools}")
+    logger.info(
+        f"Launch investigation request: investigation_id={investigation_id}, "
+        f"user_input={user_input[:50] if user_input else None}, "
+        f"selected_tools={selected_tools}, tiger_id={tiger_id}"
+    )
     
     try:
         service = InvestigationService(db)
@@ -205,7 +210,8 @@ async def launch_investigation(
             user_input=user_input or "Launch investigation",
             files=file_list,
             user_id=current_user.user_id,
-            selected_tools=selected_tools or []
+            selected_tools=selected_tools or [],
+            tiger_id=tiger_id
         )
         
         logger.info(f"Investigation launched successfully. Response: {result.get('response', '')[:100]}")
@@ -217,7 +223,9 @@ async def launch_investigation(
                 "response": result.get("response", "Investigation launched successfully"),
                 "next_steps": result.get("next_steps", []),
                 "evidence_count": result.get("evidence_count", 0),
-                "status": result.get("status", "in_progress")
+                "status": result.get("status", "in_progress"),
+                "tiger_id": result.get("tiger_id"),
+                "tiger_metadata": result.get("tiger_metadata")
             }
         }
     except Exception as e:

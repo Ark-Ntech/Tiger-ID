@@ -32,54 +32,46 @@ MODEL_CACHE_DIR = "/models"
 GPU_CONFIG_T4 = "T4"  # For lighter models
 GPU_CONFIG_A100 = "A100-40GB"  # For heavier models
 
-# Create Modal images with dependencies
-tiger_reid_image = (
+# Base PyTorch image with CUDA support
+# Modal's debian_slim automatically includes CUDA support for GPU functions
+# Using Python 3.11 for compatibility with all dependencies
+pytorch_base = (
     modal.Image.debian_slim(python_version="3.11")
-    .pip_install(
-        "torch>=2.3.0,<2.10.0",
-        "torchvision>=0.18.0,<0.25.0",
-        "Pillow>=11.0.0",
-        "numpy>=1.26.0,<2.0.0",
-        "yacs>=0.1.8",  # For CVWC2019 config
-    )
+    .apt_install("libgl1-mesa-glx", "libglib2.0-0", "git")
+    .pip_install("torch>=2.3.0", "torchvision>=0.18.0", "numpy>=1.26.0")
 )
 
-megadetector_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .pip_install(
-        "torch>=2.3.0,<2.10.0",
-        "torchvision>=0.18.0,<0.25.0",
-        "Pillow>=11.0.0",
-        "numpy>=1.26.0,<2.0.0",
-        "ultralytics",
-    )
+# Create Modal images with model-specific dependencies
+# torch, torchvision, and numpy are already installed in pytorch_base
+
+tiger_reid_image = pytorch_base.pip_install(
+    "Pillow>=11.0.0",
+    "yacs>=0.1.8",  # For CVWC2019 config
 )
 
-wildlife_tools_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install("git")  # Install git first
-    .pip_install(
-        "torch>=2.3.0,<2.10.0",
-        "torchvision>=0.18.0,<0.25.0",
-        "Pillow>=11.0.0",
-        "numpy>=1.26.0,<2.0.0",
-        "timm",
-        "git+https://github.com/WildlifeDatasets/wildlife-tools",
-    )
+megadetector_image = pytorch_base.pip_install(
+    "opencv-python-headless>=4.6.0",
+    "Pillow>=11.0.0",
+    "pandas>=2.0.0",
+    "tqdm",
+    "seaborn",
+    "ultralytics",
 )
 
-omnivinci_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .pip_install(
-        "torch>=2.3.0,<2.10.0",
-        "transformers>=4.46.0",
-        "accelerate>=0.34.0",
-        "Pillow>=11.0.0",
-        "numpy>=1.26.0,<2.0.0",
-        "av>=11.0.0",  # For video processing
-        "librosa>=0.10.0",  # For audio processing
-        "soundfile>=0.12.0",
-    )
+wildlife_tools_image = pytorch_base.pip_install(
+    "opencv-python-headless>=4.5.5.62",
+    "Pillow>=11.0.0",
+    "timm",
+    "git+https://github.com/WildlifeDatasets/wildlife-tools",
+)
+
+omnivinci_image = pytorch_base.pip_install(
+    "transformers>=4.46.0",
+    "accelerate>=0.34.0",
+    "Pillow>=11.0.0",
+    "av>=11.0.0",
+    "librosa>=0.10.0",
+    "soundfile>=0.12.0",
 )
 
 
@@ -798,81 +790,3 @@ class CVWC2019ReIDModel:
                 "success": False
             }
 
-
-# ==================== Hermes-3-Llama-3.1-8B Chat Orchestrator ====================
-
-hermes_chat_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .pip_install(
-        "torch>=2.3.0",
-        "transformers>=4.46.0",
-        "accelerate>=0.34.2",
-        "bitsandbytes>=0.44.1",  # For 8-bit quantization
-    )
-)
-
-
-@app.cls(
-    image=hermes_chat_image,
-    gpu=GPU_CONFIG_T4,  # Hermes-3-8B runs efficiently on T4
-    volumes={MODEL_CACHE_DIR: models_volume},
-    timeout=300,
-    scaledown_window=300,  # Renamed from container_idle_timeout
-)
-class HermesChatModel:
-    """Hermes-3-Llama-3.1-8B chat orchestrator with native tool calling."""
-    
-    @modal.enter()
-    def load_model(self):
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-        import torch
-        
-        model_id = "NousResearch/Hermes-3-Llama-3.1-8B"
-        print(f"Loading Hermes-3 chat model: {model_id}")
-        
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_id, cache_dir=MODEL_CACHE_DIR, trust_remote_code=True
-        )
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_id, cache_dir=MODEL_CACHE_DIR, torch_dtype=torch.float16,
-            device_map="auto", load_in_8bit=True, trust_remote_code=True
-        )
-        self.model.eval()
-        print("Hermes-3 model loaded successfully")
-    
-    @modal.method()
-    def chat(self, message: str, tools: Optional[List[Dict[str, Any]]] = None,
-             conversation_history: Optional[List[Dict[str, str]]] = None,
-             max_tokens: int = 2048, temperature: float = 0.7) -> Dict[str, Any]:
-        import torch, json, re
-        try:
-            messages = conversation_history or []
-            if tools:
-                tool_desc = "\n".join([f"- {t.get('name')}: {t.get('description')}" for t in tools[:20]])
-                system_content = f"You are an AI assistant for tiger conservation. Tools: {tool_desc}. Use JSON for tool calls: {{\"tool_call\": {{\"name\": \"x\", \"arguments\": {{}}}}}}"
-                messages = [{"role": "system", "content": system_content}] + messages
-            messages.append({"role": "user", "content": message})
-            text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(self.model.device)
-            with torch.no_grad():
-                output_ids = self.model.generate(**inputs, max_new_tokens=max_tokens, temperature=temperature,
-                                                  do_sample=temperature > 0, pad_token_id=self.tokenizer.eos_token_id)
-            response_text = self.tokenizer.decode(output_ids[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-            tool_calls = []
-            if tools and "tool_call" in response_text:
-                try:
-                    json_match = re.search(r'\{["\']tool_call["\']\s*:\s*\{.*?\}\s*\}', response_text, re.DOTALL)
-                    if json_match:
-                        tool_call_data = json.loads(json_match.group())
-                        tool_calls.append(tool_call_data.get("tool_call"))
-                        response_text = response_text[:json_match.start()] + response_text[json_match.end():]
-                        response_text = response_text.strip()
-                except: pass
-            return {"response": response_text, "tool_calls": tool_calls, "success": True, "model": "Hermes-3-Llama-3.1-8B"}
-        except Exception as e:
-            import traceback
-            return {"response": None, "tool_calls": [], "error": str(e), "error_type": type(e).__name__,
-                    "traceback": traceback.format_exc(), "success": False}

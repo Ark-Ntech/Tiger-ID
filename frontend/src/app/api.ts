@@ -160,8 +160,8 @@ export const api = createApi({
       ],
     }),
 
-    launchInvestigation: builder.mutation<ApiResponse<Investigation>, { investigation_id: string; user_input?: string; files?: File[]; selected_tools?: string[] }>({
-      query: ({ investigation_id, user_input, files, selected_tools }) => {
+    launchInvestigation: builder.mutation<ApiResponse<Investigation>, { investigation_id: string; user_input?: string; files?: File[]; selected_tools?: string[]; tiger_id?: string }>({
+      query: ({ investigation_id, user_input, files, selected_tools, tiger_id }) => {
         const formData = new FormData()
         
         // Always append user_input, even if empty
@@ -176,12 +176,17 @@ export const api = createApi({
         if (files && files.length > 0) {
           files.forEach(file => formData.append('files', file))
         }
+
+        if (tiger_id) {
+          formData.append('tiger_id', tiger_id)
+        }
         
         console.log('Sending launchInvestigation request:', {
           investigation_id,
           user_input: user_input || '',
           selected_tools,
-          files_count: files?.length || 0
+          files_count: files?.length || 0,
+          tiger_id
         })
         
         return {
@@ -239,6 +244,31 @@ export const api = createApi({
       invalidatesTags: ['Investigation', 'Dashboard'],
     }),
 
+    // Investigation 2.0 endpoints
+    launchInvestigation2: builder.mutation<ApiResponse<any>, FormData>({
+      query: (formData) => ({
+        url: '/api/v1/investigations2/launch',
+        method: 'POST',
+        body: formData,
+      }),
+      invalidatesTags: ['Investigation', 'Dashboard'],
+    }),
+
+    getInvestigation2: builder.query<ApiResponse<any>, string>({
+      query: (id) => `/api/v1/investigations2/${id}`,
+      providesTags: (_result, _error, id) => [{ type: 'Investigation', id }],
+    }),
+
+    getInvestigation2Report: builder.query<ApiResponse<any>, string>({
+      query: (id) => `/api/v1/investigations2/${id}/report`,
+      providesTags: (_result, _error, id) => [{ type: 'Investigation', id }],
+    }),
+
+    getInvestigation2Matches: builder.query<ApiResponse<any>, string>({
+      query: (id) => `/api/v1/investigations2/${id}/matches`,
+      providesTags: (_result, _error, id) => [{ type: 'Investigation', id }],
+    }),
+
     // Tiger endpoints
     getTigers: builder.query<
       ApiResponse<PaginatedResponse<Tiger>>,
@@ -274,9 +304,72 @@ export const api = createApi({
       invalidatesTags: ['Tiger'],
     }),
 
+    identifyTigerImage: builder.mutation<
+      ApiResponse<any>,
+      {
+        image: File
+        model_name?: string
+        similarity_threshold?: number
+        use_all_models?: boolean
+        ensemble_mode?: string
+      }
+    >({
+      query: ({ image, model_name, similarity_threshold, use_all_models, ensemble_mode }) => {
+        const formData = new FormData()
+        formData.append('image', image)
+
+        if (typeof similarity_threshold === 'number') {
+          formData.append('similarity_threshold', similarity_threshold.toString())
+        }
+        if (model_name) {
+          formData.append('model_name', model_name)
+        }
+        if (use_all_models) {
+          formData.append('use_all_models', 'true')
+        }
+        if (ensemble_mode) {
+          formData.append('ensemble_mode', ensemble_mode)
+        }
+
+        return {
+          url: '/api/v1/tigers/identify',
+          method: 'POST',
+          body: formData,
+        }
+      },
+      invalidatesTags: ['Tiger'],
+    }),
+
     getAvailableModels: builder.query<ApiResponse<{ models: string[]; default: string }>, void>({
       query: () => '/api/v1/tigers/models',
       providesTags: ['Tiger'],
+    }),
+
+    registerTiger: builder.mutation<
+      ApiResponse<any>,
+      { name: string; images: File[]; alias?: string; notes?: string; model_name?: string }
+    >({
+      query: ({ name, images, alias, notes, model_name }) => {
+        const formData = new FormData()
+        formData.append('name', name)
+        if (alias) {
+          formData.append('alias', alias)
+        }
+        if (notes) {
+          formData.append('notes', notes)
+        }
+        if (model_name) {
+          formData.append('model_name', model_name)
+        }
+        images.forEach(image => formData.append('images', image))
+
+        return {
+          url: '/api/v1/tigers',
+          method: 'POST',
+          body: formData,
+        }
+      },
+      invalidatesTags: ['Tiger'],
     }),
 
     createTiger: builder.mutation<ApiResponse<any>, FormData>({
@@ -863,11 +956,18 @@ export const {
   usePauseInvestigationMutation,
   useBulkPauseInvestigationsMutation,
   useBulkArchiveInvestigationsMutation,
+  // Investigation 2.0
+  useLaunchInvestigation2Mutation,
+  useGetInvestigation2Query,
+  useGetInvestigation2ReportQuery,
+  useGetInvestigation2MatchesQuery,
   useGetTigersQuery,
   useGetTigerQuery,
   useIdentifyTigerMutation,
   useIdentifyTigersBatchMutation,
+  useIdentifyTigerImageMutation,
   useGetAvailableModelsQuery,
+  useRegisterTigerMutation,
   useCreateTigerMutation,
   useLaunchInvestigationFromTigerMutation,
   useTestModelMutation,

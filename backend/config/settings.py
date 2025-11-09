@@ -101,6 +101,14 @@ class OmniVinciSettings(BaseSettings):
     audio_length: str = Field(default="max_3600", alias="OMNIVINCI_AUDIO_LENGTH")
 
 
+class OpenAISettings(BaseSettings):
+    """OpenAI chat model configuration"""
+    api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    model: str = Field(default="gpt-5-mini", alias="OPENAI_MODEL")
+    max_tokens: int = Field(default=2048, alias="OPENAI_MAX_TOKENS")
+    temperature: float = Field(default=0.7, alias="OPENAI_TEMPERATURE")
+
+
 class FirecrawlSettings(BaseSettings):
     """Firecrawl configuration"""
     model_config = SettingsConfigDict(
@@ -275,6 +283,7 @@ class AppSettings(BaseSettings):
     smtp: SMTPSettings = SMTPSettings()
     sentry: SentrySettings = SentrySettings()
     omnivinci: OmniVinciSettings = OmniVinciSettings()
+    openai: OpenAISettings = OpenAISettings()
     firecrawl: FirecrawlSettings = FirecrawlSettings()
     puppeteer: PuppeteerSettings = PuppeteerSettings()
     web_search: WebSearchSettings = WebSearchSettings()
