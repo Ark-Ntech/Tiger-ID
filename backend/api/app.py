@@ -18,6 +18,7 @@ from backend.api.notification_routes import router as notification_router
 from backend.api.search_routes import router as search_router
 from backend.api.export_routes import router as export_router
 from backend.api.analytics_routes import router as analytics_router
+from backend.api.dashboard_routes import router as dashboard_router
 from backend.api.audit_routes import router as audit_router
 from backend.api.template_routes import router as template_router
 from backend.api.saved_search_routes import router as saved_search_router
@@ -224,6 +225,7 @@ def create_app() -> FastAPI:
     app.include_router(search_router)  # Global search routes
     app.include_router(export_router)  # Export routes
     app.include_router(analytics_router)  # Analytics routes
+    app.include_router(dashboard_router)  # Optimized dashboard routes
     app.include_router(audit_router)  # Audit log routes
     app.include_router(template_router)  # Template routes
     app.include_router(saved_search_router)  # Saved search routes

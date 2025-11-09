@@ -11,6 +11,7 @@ from backend.database.models import (
     VerificationQueue
 )
 from backend.utils.logging import get_logger
+from backend.services.simple_cache import cached
 
 # For backward compatibility and verification analytics
 Verification = VerificationQueue
@@ -20,10 +21,11 @@ logger = get_logger(__name__)
 
 class AnalyticsService:
     """Service for generating analytics and dashboard metrics"""
-    
+
     def __init__(self, session: Session):
         self.session = session
-    
+
+    @cached(ttl_minutes=5)
     def get_investigation_analytics(
         self,
         start_date: Optional[datetime] = None,
