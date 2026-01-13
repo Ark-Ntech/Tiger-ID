@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Card from '../components/common/Card'
 import Button from '../components/common/Button'
+import Badge from '../components/common/Badge'
 import Alert from '../components/common/Alert'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import Investigation2Upload from '../components/investigations/Investigation2Upload'
@@ -33,8 +34,43 @@ const Investigation2 = () => {
   const [launchInvestigation, { isLoading: isLaunching }] = useLaunchInvestigation2Mutation()
   const { data: investigationData, isLoading: isLoadingData } = useGetInvestigation2Query(
     investigationId || '',
-    { skip: !investigationId, pollingInterval: 5000 }
+    { skip: !investigationId, pollingInterval: 2000 } // Poll every 2 seconds for faster updates
   )
+
+  // Update progress from polling data (in case WebSocket misses events)
+  useEffect(() => {
+    if (investigationData && investigationData.steps) {
+      console.log('Updating progress from investigation data:', investigationData)
+      
+      // Create a map of backend steps by step_type
+      const stepsMap = new Map(
+        investigationData.steps.map((s: any) => [s.step_type, s])
+      )
+      
+      // Update progress steps with data from backend
+      setProgressSteps(prev => 
+        prev.map(step => {
+          const backendStep = stepsMap.get(step.phase)
+          if (backendStep) {
+            // Backend step exists - update status
+            const status = backendStep.status === 'completed' || backendStep.status.includes('completed')
+              ? 'completed'
+              : backendStep.status === 'running'
+              ? 'running'
+              : step.status
+            
+            return {
+              ...step,
+              status,
+              data: backendStep.result,
+              timestamp: backendStep.timestamp
+            }
+          }
+          return step
+        })
+      )
+    }
+  }, [investigationData])
 
   // Initialize progress steps
   const initializeProgress = () => {
@@ -171,8 +207,15 @@ const Investigation2 = () => {
     }
   }
 
-  const isInProgress = investigationId && !investigationData?.status?.includes('complete')
-  const isCompleted = investigationData?.status === 'completed'
+  const isInProgress = investigationId && investigationData?.status && 
+    !investigationData.status.includes('complete') && 
+    investigationData.status !== 'completed'
+  
+  const isCompleted = investigationData?.status === 'completed' || 
+    investigationData?.status?.includes('completed') ||
+    (investigationData?.steps && investigationData.steps.some((s: any) => 
+      s.step_type === 'complete' && s.status === 'completed'
+    ))
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -260,13 +303,34 @@ const Investigation2 = () => {
         <div className="mt-8">
           <Card>
             <div className="p-6">
-              <h2 className="text-xl font-semibold mb-4">Investigation Report</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Investigation Report</h2>
+                <Badge color="green">Completed</Badge>
+              </div>
               <Investigation2Results
                 investigation={investigationData}
                 fullWidth
               />
             </div>
           </Card>
+        </div>
+      )}
+      
+      {/* Debug Info (temporary) */}
+      {investigationData && (
+        <div className="mt-4 text-xs text-gray-500">
+          <details>
+            <summary className="cursor-pointer hover:text-gray-700">Debug Info</summary>
+            <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto max-h-40">
+              {JSON.stringify({
+                status: investigationData.status,
+                steps: investigationData.steps?.length || 0,
+                hasSteps: !!investigationData.steps,
+                hasSummary: !!investigationData.summary,
+                isCompleted: isCompleted
+              }, null, 2)}
+            </pre>
+          </details>
         </div>
       )}
     </div>
