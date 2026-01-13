@@ -7,9 +7,6 @@ import ErrorBoundary from './components/common/ErrorBoundary'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
-import Investigations from './pages/Investigations'
-import InvestigationWorkspace from './pages/InvestigationWorkspace'
-import LaunchInvestigation from './pages/LaunchInvestigation'
 import Investigation2 from './pages/Investigation2'
 import Tigers from './pages/Tigers'
 import TigerDetail from './pages/TigerDetail'
@@ -42,9 +39,6 @@ function App() {
         >
           <Route index element={<Home />} />
           <Route path="dashboard" element={<Dashboard />} />
-          <Route path="investigations" element={<Investigations />} />
-          <Route path="investigations/:id" element={<InvestigationWorkspace />} />
-          <Route path="investigations/launch" element={<Navigate to="/investigations?tab=1" replace />} />
           <Route path="investigation2" element={<Investigation2 />} />
           <Route path="tigers" element={<Tigers />} />
           <Route path="tigers/:id" element={<TigerDetail />} />
@@ -54,12 +48,13 @@ function App() {
           <Route path="finetuning" element={<FineTuning />} />
           <Route path="dataset-management" element={<DatasetManagement />} />
           <Route path="verification" element={<Verification />} />
-          {/* Redirect obsolete routes to consolidated pages */}
-          <Route path="tools" element={<Navigate to="/investigations/launch" replace />} />
-          <Route path="model-testing" element={<Navigate to="/investigations/launch" replace />} />
+          {/* Redirect obsolete routes to Investigation 2.0 */}
+          <Route path="investigations" element={<Navigate to="/investigation2" replace />} />
+          <Route path="investigations/:id" element={<Navigate to="/investigation2" replace />} />
+          <Route path="investigations/launch" element={<Navigate to="/investigation2" replace />} />
+          <Route path="tools" element={<Navigate to="/investigation2" replace />} />
+          <Route path="model-testing" element={<Navigate to="/investigation2" replace />} />
           <Route path="model-dashboard" element={<Navigate to="/dashboard" replace />} />
-          <Route path="templates" element={<Navigate to="/investigations" replace />} />
-          <Route path="saved-searches" element={<Navigate to="/investigations" replace />} />
           <Route path="search" element={<SearchResults />} />
         </Route>
 
