@@ -61,7 +61,7 @@ class ModalClient:
         self.use_mock = use_mock if use_mock is not None else os.getenv("MODAL_USE_MOCK", "true").lower() == "true"
         
         if self.use_mock:
-            logger.warning("[MODAL CLIENT] 🚧 MOCK MODE ENABLED - Using simulated responses")
+            logger.warning("[MODAL CLIENT] MOCK MODE ENABLED - Using simulated responses")
         else:
             logger.info("[MODAL CLIENT] Production mode - using real Modal API")
         
@@ -94,39 +94,40 @@ class ModalClient:
         Returns:
             Modal function reference
         """
+        logger.info(f"[MODAL CLIENT] Getting Modal function for model: {model_name}")
+
+        # Map model names to (app_name, class_name)
+        model_config = {
+            "tiger_reid": ("tiger-id-models", "TigerReIDModel"),
+            "megadetector": ("tiger-id-models", "MegaDetectorModel"),
+            "wildlife_tools": ("tiger-id-models", "WildlifeToolsModel"),
+            "rapid_reid": ("tiger-id-models", "RAPIDReIDModel"),
+            "cvwc2019_reid": ("tiger-id-models", "CVWC2019ReIDModel"),
+            "omnivinci": ("tiger-id-models", "OmniVinciModel")
+        }
+
+        if model_name not in model_config:
+            raise ValueError(f"Unknown model: {model_name}")
+
+        app_name, class_name = model_config[model_name]
+        logger.info(f"[MODAL CLIENT] Model config: app='{app_name}', class='{class_name}'")
+
         try:
-            logger.info(f"[MODAL CLIENT] Getting Modal function for model: {model_name}")
             import modal
-            
-            # Map model names to class names  
-            class_map = {
-                "tiger_reid": "TigerReIDModel",
-                "megadetector": "MegaDetectorModel",
-                "wildlife_tools": "WildlifeToolsModel",
-                "rapid_reid": "RAPIDReIDModel",
-                "cvwc2019_reid": "CVWC2019ReIDModel",
-                "omnivinci": "OmniVinciModel"
-            }
-            
-            if model_name not in class_map:
-                raise ValueError(f"Unknown model: {model_name}")
-            
-            class_name = class_map[model_name]
-            logger.info(f"[MODAL CLIENT] Model class name: {class_name}")
-            
+
             # Cache attribute name
             cache_attr = f"_{model_name}"
-            
+
             # Return cached instance if available
             if getattr(self, cache_attr, None) is not None:
                 logger.info(f"[MODAL CLIENT] Using cached Modal instance for {model_name}")
                 return getattr(self, cache_attr)
-            
+
             # Get the deployed class using Cls.from_name()
             # This references the actual deployed app on Modal
             try:
-                logger.info(f"[MODAL CLIENT] Connecting to Modal app 'tiger-id-models' class '{class_name}'...")
-                model_cls = modal.Cls.from_name("tiger-id-models", class_name)
+                logger.info(f"[MODAL CLIENT] Connecting to Modal app '{app_name}' class '{class_name}'...")
+                model_cls = modal.Cls.from_name(app_name, class_name)
                 logger.info(f"[MODAL CLIENT] Successfully connected to Modal class")
                 logger.info(f"[MODAL CLIENT] Creating instance...")
                 instance = model_cls()
@@ -138,8 +139,8 @@ class ModalClient:
                 raise
                 
         except modal.exception.NotFoundError as e:
-            logger.error(f"Modal app 'tiger-id-models' or class '{class_name}' not found: {e}")
-            raise ModalUnavailableError("Modal app or model not deployed")
+            logger.error(f"Modal app '{app_name}' or class '{class_name}' not found: {e}")
+            raise ModalUnavailableError(f"Modal app '{app_name}' or model '{class_name}' not deployed")
         except ImportError as e:
             logger.error(f"Modal module not found: {e}")
             raise ModalUnavailableError("Modal not installed")
@@ -600,6 +601,68 @@ class ModalClient:
                 )
             else:
                 raise
+    
+    async def omnivinci_analyze_image(
+        self,
+        image_bytes: bytes,
+        prompt: str = "Analyze this image in detail and describe what you see."
+    ) -> Dict[str, Any]:
+        """
+        Analyze an image using OmniVinci's omni-modal LLM.
+        
+        Provides rich visual understanding beyond pattern matching,
+        offering contextual analysis of tiger characteristics, behavior, and environment.
+        
+        Args:
+            image_bytes: Image as bytes
+            prompt: Analysis prompt
+            
+        Returns:
+            Dictionary with detailed visual analysis
+        """
+        if self.use_mock:
+            logger.info(f"[MODAL CLIENT] Using MOCK OmniVinci image analysis")
+            return {
+                "success": True,
+                "analysis": "Mock visual analysis: Tiger appears to be an adult Amur tiger in a natural setting. Stripe patterns are clearly visible along the flanks. The tiger's posture suggests alertness. Image quality is suitable for identification purposes.",
+                "mock": True
+            }
+        
+        try:
+            logger.info(f"[MODAL CLIENT] Calling OmniVinci image analysis via Modal...")
+            
+            # Get Modal function
+            model = self._get_modal_function("omnivinci")
+            
+            # Call with retry
+            result = await self._call_with_retry(
+                model.analyze_image,
+                image_bytes,
+                prompt
+            )
+            
+            if result.get("success"):
+                logger.info(f"[MODAL CLIENT] OmniVinci analysis completed: {len(result.get('analysis', ''))} chars")
+            else:
+                logger.error(f"[MODAL CLIENT] OmniVinci analysis failed: {result.get('error')}")
+            
+            return result
+        
+        except ModalUnavailableError as e:
+            logger.error(f"Modal unavailable for OmniVinci image analysis: {e}")
+            # Return graceful fallback
+            return {
+                "success": False,
+                "error": "OmniVinci service unavailable",
+                "analysis": None
+            }
+        except Exception as e:
+            logger.error(f"OmniVinci image analysis error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "analysis": None
+            }
 
     # ==================== Queue Processing ====================
     
