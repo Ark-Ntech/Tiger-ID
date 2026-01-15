@@ -130,7 +130,14 @@ class Facility(Base):
     data_source = Column(String(100), index=True)
     reference_dataset_version = Column(DateTime)
     reference_metadata = Column(JSON, default=dict)  # This is fine as it's not a direct attribute name conflict
-    
+
+    # Location fields (from migration 005)
+    coordinates = Column(JSON)  # {"latitude": float, "longitude": float, "geocoded_at": timestamp, "confidence": str}
+
+    # Discovery tracking (from migration 006)
+    discovered_at = Column(DateTime)  # When facility was auto-discovered
+    discovered_by_investigation_id = Column(UUID(as_uuid=True), ForeignKey("investigations.investigation_id"))
+
     # Relationships
     tigers = relationship("Tiger", back_populates="origin_facility")
     crawl_history = relationship("CrawlHistory", back_populates="facility")
@@ -152,7 +159,13 @@ class Tiger(Base):
     notes = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    
+
+    # Discovery tracking (from migration 006)
+    is_reference = Column(Boolean, default=False, nullable=False, index=True)  # True = ATRW reference data only
+    discovered_at = Column(DateTime)  # When tiger was discovered through investigation
+    discovered_by_investigation_id = Column(UUID(as_uuid=True), ForeignKey("investigations.investigation_id"))
+    discovery_confidence = Column(Float)  # Gemini confidence in discovery
+
     # Relationships
     origin_facility = relationship("Facility", back_populates="tigers")
     images = relationship("TigerImage", back_populates="tiger")
@@ -167,7 +180,7 @@ class TigerImage(Base):
     tiger_id = Column(UUID(as_uuid=True), ForeignKey("tigers.tiger_id"), index=True)
     image_path = Column(String(500), nullable=False)
     thumbnail_path = Column(String(500))
-    embedding = Column(Vector(512))
+    embedding = Column(Vector(2048))  # ResNet50 embeddings are 2048-dimensional
     side_view = Column(SQLEnum(SideView), default=SideView.unknown)
     pose_keypoints = Column(JSON)
     meta_data = Column("metadata", JSON, default=dict)  # Use meta_data as Python attr, metadata as DB column
@@ -175,7 +188,11 @@ class TigerImage(Base):
     verified = Column(Boolean, default=False, index=True)
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id"))
     created_at = Column(DateTime, server_default=func.now())
-    
+
+    # Discovery tracking (from migration 006)
+    is_reference = Column(Boolean, default=False, nullable=False, index=True)  # True = ATRW/reference, False = real tiger
+    discovered_by_investigation_id = Column(UUID(as_uuid=True), ForeignKey("investigations.investigation_id"))
+
     # Relationships
     tiger = relationship("Tiger", back_populates="images")
 
@@ -198,6 +215,7 @@ class Investigation(Base):
     assigned_to = Column(JSON, default=list)
     related_tigers = Column(JSON, default=list)
     related_facilities = Column(JSON, default=list)
+    methodology = Column(JSON, default=list)  # Reasoning chain steps from Investigation 2.0 workflow (from migration 005)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     

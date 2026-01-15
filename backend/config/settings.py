@@ -109,6 +109,23 @@ class OpenAISettings(BaseSettings):
     temperature: float = Field(default=0.7, alias="OPENAI_TEMPERATURE")
 
 
+class GeminiSettings(BaseSettings):
+    """Google Gemini chat model configuration"""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+    api_key: Optional[str] = Field(default=None, alias="GEMINI_API_KEY")
+    flash_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_FLASH_MODEL")
+    pro_model: str = Field(default="gemini-2.5-pro", alias="GEMINI_PRO_MODEL")
+    max_tokens: int = Field(default=8192, alias="GEMINI_MAX_TOKENS")
+    temperature: float = Field(default=0.7, alias="GEMINI_TEMPERATURE")
+    enable_search_grounding: bool = Field(default=True, alias="GEMINI_SEARCH_GROUNDING")
+
+
 class FirecrawlSettings(BaseSettings):
     """Firecrawl configuration"""
     model_config = SettingsConfigDict(
@@ -207,7 +224,7 @@ class ModelSettings(BaseSettings):
     # Re-ID models
     reid_path: str = Field(default="./data/models/tiger_reid_model.pth", alias="REID_MODEL_PATH")
     reid_similarity_threshold: float = 0.8
-    reid_embedding_dim: int = 512
+    reid_embedding_dim: int = 2048  # ResNet50 without classifier produces 2048-dim embeddings
     rapid: RAPIDSettings = RAPIDSettings()
     wildlife_tools: WildlifeToolsSettings = WildlifeToolsSettings()
     cvwc2019: CVWC2019Settings = CVWC2019Settings()
@@ -284,6 +301,7 @@ class AppSettings(BaseSettings):
     sentry: SentrySettings = SentrySettings()
     omnivinci: OmniVinciSettings = OmniVinciSettings()
     openai: OpenAISettings = OpenAISettings()
+    gemini: GeminiSettings = GeminiSettings()
     firecrawl: FirecrawlSettings = FirecrawlSettings()
     puppeteer: PuppeteerSettings = PuppeteerSettings()
     web_search: WebSearchSettings = WebSearchSettings()
