@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useGlobalSearchQuery } from '../app/api'
 import Card from '../components/common/Card'
@@ -22,7 +21,7 @@ const SearchResults = () => {
     { skip: !query || query.length < 2 }
   )
 
-  const results = data?.data || {
+  const results = data?.data?.results || {
     investigations: [],
     tigers: [],
     facilities: [],

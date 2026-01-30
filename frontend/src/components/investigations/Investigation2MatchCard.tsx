@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
 interface Match {
   tiger_id: string;
@@ -80,7 +80,7 @@ export const Investigation2MatchCard: React.FC<Investigation2MatchCardProps> = (
         </div>
 
         <div className="text-gray-400 hover:text-gray-600 transition-colors">
-          {expanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+          {expanded ? <ChevronUpIcon className="w-6 h-6" /> : <ChevronDownIcon className="w-6 h-6" />}
         </div>
       </div>
 

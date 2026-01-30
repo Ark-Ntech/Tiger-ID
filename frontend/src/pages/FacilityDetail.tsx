@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useGetFacilityQuery, useGetTigersQuery } from '../app/api'
 import Card from '../components/common/Card'
@@ -6,16 +5,16 @@ import LoadingSpinner from '../components/common/LoadingSpinner'
 import Badge from '../components/common/Badge'
 import Button from '../components/common/Button'
 import Alert from '../components/common/Alert'
-import { 
-  BuildingOfficeIcon, 
-  GlobeAltIcon, 
-  LinkIcon, 
+import {
+  BuildingOfficeIcon,
+  GlobeAltIcon,
+  LinkIcon,
   ArrowLeftIcon,
   ShieldCheckIcon,
   MapPinIcon,
   CalendarIcon
 } from '@heroicons/react/24/outline'
-import { Facility, Tiger } from '../types'
+import { Tiger } from '../types'
 
 const FacilityDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -61,7 +60,7 @@ const FacilityDetail = () => {
           <ArrowLeftIcon className="h-4 w-4" />
           <span>Back to Facilities</span>
         </Button>
-        <Alert variant="error">
+        <Alert type="error">
           {error ? 'Error loading facility' : 'Facility not found'}
         </Alert>
       </div>

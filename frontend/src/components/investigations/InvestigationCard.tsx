@@ -7,7 +7,6 @@ import InvestigationActions from './InvestigationActions'
 import {
   FolderOpenIcon,
   ClockIcon,
-  CurrencyDollarIcon,
   DocumentTextIcon,
   ChevronDownIcon,
   ChevronUpIcon

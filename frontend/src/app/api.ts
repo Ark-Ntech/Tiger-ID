@@ -1,5 +1,6 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
 import type { RootState } from './store'
+import type { LaunchInvestigation2Response } from '../types/investigation2'
 import type {
   User,
   Investigation,
@@ -40,6 +41,7 @@ import type {
   AnnotationUpdate,
   GlobalSearchRequest,
   GlobalSearchResponse,
+  NetworkGraphResponse,
   SyncFacilityRequest,
   SyncFacilityResponse,
   SyncInspectionsRequest,
@@ -133,7 +135,7 @@ export const api = createApi({
       providesTags: (_result, _error, id) => [{ type: 'Investigation', id }],
     }),
 
-    createInvestigation: builder.mutation<ApiResponse<Investigation>, { title: string; description?: string; priority?: string }>({
+    createInvestigation: builder.mutation<ApiResponse<Investigation>, { title: string; description?: string; priority?: string; tags?: string[] }>({
       query: (data) => {
         console.log('Creating investigation with data:', data)
         return {
@@ -245,7 +247,7 @@ export const api = createApi({
     }),
 
     // Investigation 2.0 endpoints
-    launchInvestigation2: builder.mutation<ApiResponse<any>, FormData>({
+    launchInvestigation2: builder.mutation<LaunchInvestigation2Response, FormData>({
       query: (formData) => ({
         url: '/api/v1/investigations2/launch',
         method: 'POST',
@@ -759,7 +761,7 @@ export const api = createApi({
       query: ({ investigation_id, include_evidence, include_steps, include_metadata }) => ({
         url: `/api/v1/investigations/${investigation_id}/export/json`,
         params: { include_evidence, include_steps, include_metadata },
-        responseHandler: (response) => response.blob(),
+        responseHandler: (response: Response) => response.blob(),
       }),
     }),
 
@@ -770,7 +772,7 @@ export const api = createApi({
       query: ({ investigation_id, include_evidence, include_steps }) => ({
         url: `/api/v1/investigations/${investigation_id}/export/markdown`,
         params: { include_evidence, include_steps },
-        responseHandler: (response) => response.blob(),
+        responseHandler: (response: Response) => response.blob(),
       }),
     }),
 
@@ -781,7 +783,7 @@ export const api = createApi({
       query: ({ investigation_id, include_evidence, include_steps }) => ({
         url: `/api/v1/investigations/${investigation_id}/export/pdf`,
         params: { include_evidence, include_steps },
-        responseHandler: (response) => response.blob(),
+        responseHandler: (response: Response) => response.blob(),
       }),
     }),
 
@@ -792,7 +794,7 @@ export const api = createApi({
       query: ({ investigation_id, data_type }) => ({
         url: `/api/v1/investigations/${investigation_id}/export/csv`,
         params: { data_type },
-        responseHandler: (response) => response.blob(),
+        responseHandler: (response: Response) => response.blob(),
       }),
     }),
 
@@ -804,6 +806,8 @@ export const api = createApi({
         evidence_id?: string
         user_id?: string
         annotation_type?: string
+        target_entity_type?: string
+        target_entity_id?: string
         limit?: number
         offset?: number
       }
@@ -851,6 +855,14 @@ export const api = createApi({
         method: 'DELETE',
       }),
       invalidatesTags: ['Annotation'],
+    }),
+
+    // Network Graph endpoint
+    getNetworkGraph: builder.query<ApiResponse<NetworkGraphResponse>, string>({
+      query: (id) => ({
+        url: `/api/v1/network/graph/${id}`,
+      }),
+      providesTags: ['Investigation', 'Facility', 'Tiger'],
     }),
 
     // Global Search endpoint
@@ -1018,6 +1030,8 @@ export const {
   useCreateAnnotationMutation,
   useUpdateAnnotationMutation,
   useDeleteAnnotationMutation,
+  // Network Graph
+  useGetNetworkGraphQuery,
   // Global Search
   useGlobalSearchQuery,
   // Integrations

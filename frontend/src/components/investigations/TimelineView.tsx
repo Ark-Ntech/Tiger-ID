@@ -3,7 +3,7 @@ import { useGetInvestigationEventsQuery } from '../../app/api'
 import Card from '../common/Card'
 import LoadingSpinner from '../common/LoadingSpinner'
 import Badge from '../common/Badge'
-import { formatDate, formatDateTime } from '../../utils/formatters'
+import { formatDateTime } from '../../utils/formatters'
 import { InvestigationEvent } from '../../types'
 
 interface TimelineViewProps {

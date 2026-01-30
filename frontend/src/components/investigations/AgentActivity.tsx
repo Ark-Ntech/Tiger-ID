@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import Card from '../common/Card'
 import Badge from '../common/Badge'
-import LoadingSpinner from '../common/LoadingSpinner'
 import { formatDateTime } from '../../utils/formatters'
 import { AgentActivity as AgentActivityType } from '../../types'
 
@@ -13,7 +12,7 @@ interface AgentActivityProps {
 const AgentActivity = ({ investigationId }: AgentActivityProps) => {
   const [activities, setActivities] = useState<Record<string, AgentActivityType>>({})
 
-  const { isConnected, joinInvestigation, leaveInvestigation, send } = useWebSocket({
+  const { isConnected, joinInvestigation, leaveInvestigation } = useWebSocket({
     onMessage: (message) => {
       if (message.type === 'agent_update') {
         const data = message.data

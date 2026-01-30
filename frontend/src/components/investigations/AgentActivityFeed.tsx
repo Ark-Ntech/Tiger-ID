@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import Card from '../common/Card'
-import Badge from '../common/Badge'
-import { 
-  MagnifyingGlassIcon, 
-  LightBulbIcon, 
+import {
+  MagnifyingGlassIcon,
+  LightBulbIcon,
   CheckCircleIcon,
   ArrowPathIcon,
   ClockIcon

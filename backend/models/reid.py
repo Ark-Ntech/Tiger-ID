@@ -9,27 +9,33 @@ import io
 from backend.utils.logging import get_logger
 from backend.services.modal_client import get_modal_client
 from backend.config.settings import get_settings
+from backend.models.interfaces.base_reid_model import BaseReIDModel
 
 logger = get_logger(__name__)
 
 
-class TigerReIDModel:
+class TigerReIDModel(BaseReIDModel):
     """Tiger stripe re-identification model using Modal"""
-    
+
     def __init__(self, model_path: Optional[str] = None, device: Optional[str] = None):
         """
         Initialize tiger re-ID model (Modal-based).
-        
+
         Args:
             model_path: Path to model checkpoint (deprecated, kept for compatibility)
             device: Device to run model on (deprecated, kept for compatibility)
         """
         settings = get_settings()
         self.model_path = model_path or settings.models.reid_path
-        self.embedding_dim = settings.models.reid_embedding_dim
+        self._embedding_dim = settings.models.reid_embedding_dim
         self.modal_client = get_modal_client()
-        
+
         logger.info("TigerReIDModel initialized with Modal backend")
+
+    @property
+    def embedding_dim(self) -> int:
+        """Get the embedding dimension for this model."""
+        return self._embedding_dim
     
     async def load_model(self):
         """

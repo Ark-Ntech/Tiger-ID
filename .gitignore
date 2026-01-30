@@ -95,3 +95,21 @@ frontend/test-results/
 
 # Documentation (keep sources, ignore builds)
 docs/_build/
+
+# Claude temporary files
+tmpclaude-*-cwd
+
+# Test output files
+test_output.txt
+test_results.txt
+test_*.json
+test_workflow_output.log
+uvicorn.error.log
+uvicorn.log
+deploy.log
+
+# Pip artifacts (malformed package names)
+=*
+
+# Windows artifacts
+nul

@@ -25,11 +25,13 @@ const EvidenceGallery = ({ investigationId }: EvidenceGalleryProps) => {
 
   const { data, isLoading, error, refetch } = useGetEvidenceQuery({ investigation_id: investigationId })
   const [uploadEvidence, { isLoading: uploading }] = useUploadEvidenceMutation()
-  const [linkTiger] = useLinkTigerEvidenceMutation()
+  const [_linkTiger] = useLinkTigerEvidenceMutation()
+  void _linkTiger // Reserved for future tiger-evidence linking feature
 
   const evidence = useMemo(() => {
     if (!data?.data) return []
-    return Array.isArray(data.data) ? data.data : data.data.evidence || []
+    // API returns Evidence[] directly
+    return Array.isArray(data.data) ? data.data : []
   }, [data])
 
   const filteredEvidence = useMemo(() => {

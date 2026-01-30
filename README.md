@@ -29,23 +29,25 @@ setup\windows\START_DOCKER.bat
 
 A comprehensive multi-agent investigative platform for detecting tiger trafficking through:
 
-- 🔍 **AI-Powered Investigation** - Hermes-powered agent orchestration with LangGraph
+- 🔍 **AI-Powered Investigation** - Gemini-powered agent orchestration with Search Grounding
 - 🐅 **Tiger Re-Identification** - Deep learning stripe pattern analysis with 4+ models
+- 🌐 **Web Intelligence** - Real-time search with citations via Gemini Search Grounding
 - 🏢 **Facility Monitoring** - Continuous social media and USDA license tracking
 - 👥 **Multi-User Collaboration** - Real-time workspace with role-based access
 - 📊 **Analytics & Reporting** - Comprehensive dashboards and exports
-- 🔌 **API Integration** - REST API with 27+ route modules
+- 🔌 **API Integration** - REST API with streamlined investigation workflow
 - 🤖 **MCP Integration** - Model Context Protocol for external tool integration
 
 ---
 
 ## 🏗️ Technology Stack
 
-**Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + Redux Toolkit  
-**Backend:** FastAPI + SQLite/PostgreSQL + pgvector + Redis  
-**Real-time:** WebSocket + Server-Sent Events (SSE)  
-**AI/ML:** PyTorch + Transformers + OmniVinci + MegaDetector + Custom Siamese Networks  
-**Orchestration:** LangGraph + AutoGen + MCP (Model Context Protocol)  
+**Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + Redux Toolkit
+**Backend:** FastAPI + SQLite/PostgreSQL + pgvector + Redis
+**Real-time:** WebSocket + Server-Sent Events (SSE)
+**AI/ML:** PyTorch + Transformers + OmniVinci + MegaDetector + Custom Siamese Networks
+**LLM:** Google Gemini 2.5 (Flash + Pro) with Search Grounding
+**Orchestration:** LangGraph + AutoGen + MCP (Model Context Protocol)
 **ML Infrastructure:** Modal (Serverless GPU compute for all models)
 
 ---

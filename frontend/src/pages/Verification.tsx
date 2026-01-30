@@ -7,7 +7,8 @@ import Badge from '../components/common/Badge'
 import { CheckCircleIcon } from '@heroicons/react/24/outline'
 
 const Verification = () => {
-  const [page, setPage] = useState(1)
+  const [page, _setPage] = useState(1)
+  void _setPage // Reserved for pagination feature
   const [statusFilter, setStatusFilter] = useState<string | undefined>('pending')
 
   const { data, isLoading } = useGetVerificationTasksQuery({

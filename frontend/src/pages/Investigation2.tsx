@@ -7,7 +7,7 @@ import Alert from '../components/common/Alert'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import Investigation2Upload from '../components/investigations/Investigation2Upload'
 import Investigation2Progress from '../components/investigations/Investigation2Progress'
-import Investigation2Results from '../components/investigations/Investigation2Results'
+import Investigation2ResultsEnhanced from '../components/investigations/Investigation2ResultsEnhanced'
 import { useLaunchInvestigation2Mutation, useGetInvestigation2Query } from '../app/api'
 
 interface ProgressStep {
@@ -32,16 +32,19 @@ const Investigation2 = () => {
   const [websocket, setWebsocket] = useState<WebSocket | null>(null)
 
   const [launchInvestigation, { isLoading: isLaunching }] = useLaunchInvestigation2Mutation()
-  const { data: investigationData, isLoading: isLoadingData } = useGetInvestigation2Query(
+  const { data: investigationResponse } = useGetInvestigation2Query(
     investigationId || '',
     { skip: !investigationId, pollingInterval: 2000 } // Poll every 2 seconds for faster updates
   )
+
+  // Extract data from API response wrapper
+  const investigationData = investigationResponse?.data
 
   // Update progress from polling data (in case WebSocket misses events)
   useEffect(() => {
     if (investigationData && investigationData.steps) {
       console.log('Updating progress from investigation data:', investigationData)
-      
+
       // Create a map of backend steps by step_type
       const stepsMap = new Map(
         investigationData.steps.map((s: any) => [s.step_type, s])
@@ -50,7 +53,7 @@ const Investigation2 = () => {
       // Update progress steps with data from backend
       setProgressSteps(prev => 
         prev.map(step => {
-          const backendStep = stepsMap.get(step.phase)
+          const backendStep = stepsMap.get(step.phase) as { status: string; result?: any; timestamp?: string } | undefined
           if (backendStep) {
             // Backend step exists - update status
             const status = backendStep.status === 'completed' || backendStep.status.includes('completed')
@@ -58,7 +61,7 @@ const Investigation2 = () => {
               : backendStep.status === 'running'
               ? 'running'
               : step.status
-            
+
             return {
               ...step,
               status,
@@ -207,9 +210,10 @@ const Investigation2 = () => {
     }
   }
 
-  const isInProgress = investigationId && investigationData?.status && 
-    !investigationData.status.includes('complete') && 
+  const _isInProgress = investigationId && investigationData?.status &&
+    !investigationData.status.includes('complete') &&
     investigationData.status !== 'completed'
+  void _isInProgress // Reserved for showing loading state
   
   const isCompleted = investigationData?.status === 'completed' || 
     investigationData?.status?.includes('completed') ||
@@ -290,7 +294,7 @@ const Investigation2 = () => {
 
           {isCompleted && investigationData && (
             <div className="mt-6">
-              <Investigation2Results
+              <Investigation2ResultsEnhanced
                 investigation={investigationData}
               />
             </div>
@@ -307,7 +311,7 @@ const Investigation2 = () => {
                 <h2 className="text-xl font-semibold">Investigation Report</h2>
                 <Badge color="green">Completed</Badge>
               </div>
-              <Investigation2Results
+              <Investigation2ResultsEnhanced
                 investigation={investigationData}
                 fullWidth
               />

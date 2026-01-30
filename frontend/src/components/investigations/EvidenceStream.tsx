@@ -7,7 +7,6 @@ import {
   NewspaperIcon,
   GlobeAltIcon,
   PhotoIcon,
-  CheckCircleIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline'
 

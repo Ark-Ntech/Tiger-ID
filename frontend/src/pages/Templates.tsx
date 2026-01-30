@@ -4,13 +4,13 @@ import { useNavigate } from 'react-router-dom'
 import Card from '../components/common/Card'
 import Button from '../components/common/Button'
 import LoadingSpinner from '../components/common/LoadingSpinner'
-import Alert from '../components/common/Alert'
 import CreateTemplateDialog from '../components/templates/CreateTemplateDialog'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
 
 const Templates = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [_selectedTemplateId, _setSelectedTemplateId] = useState<string | null>(null)
+  void _selectedTemplateId; void _setSelectedTemplateId // Reserved for template selection feature
   const navigate = useNavigate()
   const { data, isLoading, refetch } = useGetTemplatesQuery()
   const [applyTemplate, { isLoading: isApplying }] = useApplyTemplateMutation()

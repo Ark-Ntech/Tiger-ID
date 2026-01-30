@@ -22,28 +22,31 @@ const FileUploader = ({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const validateFiles = (files: FileList | null): File[] => {
-    if (!files || files.length === 0) return []
+  const validateFiles = useCallback(
+    (files: FileList | null): File[] => {
+      if (!files || files.length === 0) return []
 
-    const fileArray = Array.from(files)
-    const validFiles: File[] = []
+      const fileArray = Array.from(files)
+      const validFiles: File[] = []
 
-    for (const file of fileArray) {
-      if (file.size > maxSize) {
-        setError(`File ${file.name} exceeds maximum size of ${formatFileSize(maxSize)}`)
-        continue
+      for (const file of fileArray) {
+        if (file.size > maxSize) {
+          setError(`File ${file.name} exceeds maximum size of ${formatFileSize(maxSize)}`)
+          continue
+        }
+
+        if (multiple && validFiles.length >= maxFiles) {
+          setError(`Maximum ${maxFiles} files allowed`)
+          break
+        }
+
+        validFiles.push(file)
       }
 
-      if (multiple && validFiles.length >= maxFiles) {
-        setError(`Maximum ${maxFiles} files allowed`)
-        break
-      }
-
-      validFiles.push(file)
-    }
-
-    return validFiles
-  }
+      return validFiles
+    },
+    [maxSize, multiple, maxFiles]
+  )
 
   const handleFiles = useCallback(
     (files: FileList | null) => {
@@ -59,7 +62,7 @@ const FileUploader = ({
         onFilesSelected(newFiles)
       }
     },
-    [selectedFiles, multiple, maxFiles, onFilesSelected]
+    [selectedFiles, multiple, maxFiles, onFilesSelected, validateFiles]
   )
 
   const handleDrag = useCallback((e: React.DragEvent) => {

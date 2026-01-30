@@ -8,7 +8,8 @@ import { BuildingOfficeIcon, GlobeAltIcon, LinkIcon } from '@heroicons/react/24/
 import { Facility } from '../types'
 
 const Facilities = () => {
-  const [page, setPage] = useState(1)
+  const [page, _setPage] = useState(1)
+  void _setPage // Reserved for pagination feature
   const navigate = useNavigate()
   const { data, isLoading } = useGetFacilitiesQuery({ page, page_size: 50 })
 

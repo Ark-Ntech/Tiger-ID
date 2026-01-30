@@ -58,7 +58,7 @@ class ModalClient:
         
         # Check if mock mode enabled via environment variable
         import os
-        self.use_mock = use_mock if use_mock is not None else os.getenv("MODAL_USE_MOCK", "true").lower() == "true"
+        self.use_mock = use_mock if use_mock is not None else os.getenv("MODAL_USE_MOCK", "false").lower() == "true"
         
         if self.use_mock:
             logger.warning("[MODAL CLIENT] MOCK MODE ENABLED - Using simulated responses")

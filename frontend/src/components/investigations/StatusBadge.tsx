@@ -6,8 +6,10 @@ interface StatusBadgeProps {
   className?: string
 }
 
+type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'outline' | 'error'
+
 const StatusBadge = ({ status, phase, className = '' }: StatusBadgeProps) => {
-  const getVariant = () => {
+  const getVariant = (): BadgeVariant => {
     switch (status) {
       case 'active':
       case 'in_progress':

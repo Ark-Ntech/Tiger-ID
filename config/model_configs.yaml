@@ -11,7 +11,7 @@ reid:
   model_name: "Tiger_Stripe_ReID"
   architecture: "Siamese_ResNet50"  # or Vision_Transformer
   input_size: [224, 224]
-  embedding_dim: 512
+  embedding_dim: 2048
   similarity_threshold: 0.8
   device: "cuda"
   batch_size: 32
