@@ -21,12 +21,14 @@ interface ApprovalModalProps {
 const ApprovalModal = ({
   isOpen,
   onClose,
-  approvalId,
+  approvalId: _approvalId,
   approvalType,
   data,
   onApprove,
   onReject
 }: ApprovalModalProps) => {
+  // approvalId reserved for future tracking/logging
+  void _approvalId
   const [rejectionReason, setRejectionReason] = useState('')
   const [showRejectInput, setShowRejectInput] = useState(false)
 

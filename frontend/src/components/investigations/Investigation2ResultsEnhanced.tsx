@@ -17,15 +17,19 @@ import { Investigation2Citations } from './Investigation2Citations'
 import { Investigation2Map } from './Investigation2Map'
 import { Investigation2MatchCard } from './Investigation2MatchCard'
 import { Investigation2Methodology } from './Investigation2Methodology'
+import { MarkdownContent } from '../common/MarkdownContent'
 
 interface Investigation2ResultsEnhancedProps {
   investigation: any
   fullWidth?: boolean
 }
 
-const Investigation2ResultsEnhanced = ({ investigation, fullWidth = false }: Investigation2ResultsEnhancedProps) => {
+const Investigation2ResultsEnhanced = ({ investigation, fullWidth: _fullWidth = false }: Investigation2ResultsEnhancedProps) => {
   const [activeTab, setActiveTab] = useState('overview')
-  
+
+  // Suppress unused variable warning - fullWidth reserved for future layout enhancements
+  void _fullWidth
+
   const summary = investigation.summary || {}
   const report = summary.report || summary
   const topMatches = report.top_matches || []
@@ -33,9 +37,8 @@ const Investigation2ResultsEnhanced = ({ investigation, fullWidth = false }: Inv
   const detectionCount = report.detection_count || 0
   const totalMatches = report.total_matches || 0
   const confidence = report.confidence || 'medium'
-  
+
   // Extract phase-specific data
-  const databaseMatches = summary.database_matches || {}
   const reverseSearchResults = summary.reverse_search_results || {}
   const omnivinci = summary.omnivinci_comparison || {}
   const detectedTigers = summary.detected_tigers || []
@@ -532,17 +535,13 @@ const Investigation2ResultsEnhanced = ({ investigation, fullWidth = false }: Inv
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-2xl font-bold text-gray-900">Investigation Report</h3>
                   <div className="flex gap-2">
-                    <Badge color="purple">GPT-5-mini Generated</Badge>
+                    <Badge color="purple">Claude AI Generated</Badge>
                     {getConfidenceBadge(confidence)}
                   </div>
                 </div>
                 
                 {report.summary ? (
-                  <div className="prose max-w-none">
-                    <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-                      {report.summary}
-                    </div>
-                  </div>
+                  <MarkdownContent content={report.summary} />
                 ) : (
                   <div className="text-center text-gray-500 py-12">
                     <DocumentTextIcon className="w-16 h-16 mx-auto text-gray-300 mb-3" />
@@ -565,11 +564,7 @@ const Investigation2ResultsEnhanced = ({ investigation, fullWidth = false }: Inv
                   </div>
                   
                   <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6">
-                    <div className="prose max-w-none">
-                      <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                        {omnivinci.visual_analysis}
-                      </div>
-                    </div>
+                    <MarkdownContent content={omnivinci.visual_analysis} />
                   </div>
                   
                   <div className="mt-4 flex gap-2">

@@ -66,21 +66,30 @@ export interface InvestigationInput {
 // Tiger types
 export interface Tiger {
   id: string
+  tiger_id?: string
   name?: string
+  alias?: string
   estimated_age?: number
   sex?: 'male' | 'female' | 'unknown'
+  status?: string
   first_seen: string
   last_seen: string
+  last_seen_date?: string
+  last_seen_location?: string
   confidence_score: number
   stripe_signature?: string
   images: TigerImage[]
+  image_count?: number
   locations: Location[]
+  notes?: string
+  related_tigers?: string[]
   metadata?: Record<string, any>
 }
 
 export interface TigerImage {
   id: string
   url: string
+  path?: string
   thumbnail_url?: string
   uploaded_at: string
   source?: string
@@ -218,6 +227,8 @@ export interface Template {
   description?: string
   category: string
   content: Record<string, any>
+  workflow_steps?: any[]
+  default_agents?: string[]
   created_by: string
   is_public: boolean
   created_at: string
@@ -488,6 +499,7 @@ export interface InvestigationAnalytics {
   completion_rate: number
   average_duration_days: number
   in_progress: number
+  completed: number
   status_distribution: Record<string, number>
   priority_distribution: Record<string, number>
   timeline_data: Record<string, number>
@@ -497,6 +509,7 @@ export interface EvidenceAnalytics {
   total_evidence: number
   by_type: Record<string, number>
   by_status: Record<string, number>
+  high_relevance_count?: number
   trends: Array<{
     date: string
     count: number
@@ -508,6 +521,8 @@ export interface VerificationAnalytics {
   by_status: Record<string, number>
   by_type: Record<string, number>
   average_completion_time: number
+  pending?: number
+  approved?: number
   trends: Array<{
     date: string
     count: number
@@ -529,6 +544,7 @@ export interface FacilityAnalytics {
   by_type: Record<string, number>
   by_status: Record<string, number>
   reference_facilities: number
+  avg_tigers_per_facility?: number
 }
 
 export interface TigerAnalytics {
@@ -549,30 +565,41 @@ export interface AgentAnalytics {
     average_duration: number
   }>
   workflow_metrics: Record<string, any>
+  total_steps?: number
+  unique_agents?: number
 }
 
 // Annotation types
 export interface Annotation {
-  annotation_id: string
+  id: string
+  annotation_id?: string  // Alias for id
   investigation_id: string
   evidence_id?: string
   user_id: string
-  annotation_type: 'highlight' | 'comment' | 'marker' | 'note'
-  notes?: string
+  annotation_type: 'highlight' | 'comment' | 'marker' | 'note' | 'question' | 'tag'
+  content: string
+  notes?: string  // Alias for content
+  metadata?: Record<string, any>
   coordinates?: Record<string, any>
   created_at: string
 }
 
 export interface AnnotationCreate {
-  investigation_id: string
+  investigation_id?: string
   annotation_type: string
+  content: string
   notes?: string
   evidence_id?: string
+  target_entity_type?: string
+  target_entity_id?: string
+  metadata?: Record<string, any>
   coordinates?: Record<string, any>
 }
 
 export interface AnnotationUpdate {
+  content?: string
   notes?: string
+  metadata?: Record<string, any>
   coordinates?: Record<string, any>
 }
 
@@ -596,6 +623,29 @@ export interface GlobalSearchResponse {
     tigers: number
     facilities: number
     evidence: number
+  }
+}
+
+// Network Graph types
+export interface NetworkNode {
+  id: string
+  label?: string
+  name?: string
+  type?: string
+  [key: string]: any
+}
+
+export interface NetworkEdge {
+  from: string
+  to: string
+  type?: string
+  strength?: number
+}
+
+export interface NetworkGraphResponse {
+  network: {
+    nodes: NetworkNode[]
+    edges: NetworkEdge[]
   }
 }
 

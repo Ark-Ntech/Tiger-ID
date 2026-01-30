@@ -72,6 +72,8 @@ omnivinci_image = pytorch_base.pip_install(
     "av>=11.0.0",
     "librosa>=0.10.0",
     "soundfile>=0.12.0",
+    "einops",  # Required by OmniVinci
+    "openai-whisper",  # Required by OmniVinci for audio
 )
 
 
@@ -287,24 +289,58 @@ class WildlifeToolsModel:
         """
         from PIL import Image
         import numpy as np
+        import torch
+        from torch.utils.data import Dataset, DataLoader
         
         try:
             # Load image
             image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
             
-            # Generate embedding
-            embedding = self.extractor([np.array(image)])
+            # MegaDescriptor-L-384 expects 384x384 images
+            # Resize while maintaining aspect ratio, then center crop
+            target_size = 384
+            
+            # Resize maintaining aspect ratio
+            width, height = image.size
+            if width < height:
+                new_width = target_size
+                new_height = int(target_size * height / width)
+            else:
+                new_height = target_size
+                new_width = int(target_size * width / height)
+            
+            image = image.resize((new_width, new_height), Image.LANCZOS)
+            
+            # Center crop to 384x384
+            left = (new_width - target_size) // 2
+            top = (new_height - target_size) // 2
+            right = left + target_size
+            bottom = top + target_size
+            image = image.crop((left, top, right, bottom))
+            
+            # Wildlife-tools DeepFeatures is callable directly
+            # It expects a list of images (numpy arrays)
+            # Convert to numpy array
+            image_np = np.array(image)
+            
+            # Call extractor directly (it's a callable object, not a method)
+            # Returns numpy array of embeddings
+            embeddings = self.extractor([image_np])
             
             return {
-                "embedding": embedding[0].tolist(),
-                "shape": embedding[0].shape,
+                "embedding": embeddings[0].tolist(),
+                "shape": embeddings[0].shape,
                 "success": True
             }
             
         except Exception as e:
+            # Provide detailed error for debugging
+            import traceback
+            error_detail = f"{str(e)}\n{traceback.format_exc()}"
             return {
                 "embedding": None,
                 "error": str(e),
+                "error_detail": error_detail,
                 "success": False
             }
 
@@ -524,6 +560,95 @@ If you need to use a tool, describe what you want to do and I will execute it fo
                 "error": error_msg,
                 "error_type": error_type,
                 "traceback": tb,
+                "success": False
+            }
+    
+    @modal.method()
+    def analyze_image(
+        self,
+        image_bytes: bytes,
+        prompt: str = "Analyze this image in detail and describe what you see."
+    ) -> Dict[str, Any]:
+        """
+        Analyze an image using OmniVinci's omni-modal understanding.
+        
+        Based on example_mini_image.py from OmniVinci GitHub repository.
+        Provides detailed visual analysis beyond pattern matching.
+        
+        Args:
+            image_bytes: Image as bytes
+            prompt: Analysis prompt  
+            
+        Returns:
+            Dictionary with detailed analysis
+        """
+        from PIL import Image
+        import tempfile
+        import os
+        
+        try:
+            # Save image to temporary file
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
+                tmp_file.write(image_bytes)
+                image_path = tmp_file.name
+            
+            try:
+                # Prepare conversation with image
+                # OmniVinci handles images similarly to videos
+                conversation = [{
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image_path},
+                        {"type": "text", "text": prompt}
+                    ]
+                }]
+                
+                # Apply chat template
+                text = self.processor.apply_chat_template(
+                    conversation,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+                
+                # Process inputs
+                inputs = self.processor([text])
+                
+                # Generate response
+                output_ids = self.model.generate(
+                    input_ids=inputs.input_ids,
+                    media=getattr(inputs, 'media', None),
+                    media_config=getattr(inputs, 'media_config', None),
+                    generation_config=self.generation_config,
+                )
+                
+                # Decode output
+                response = self.processor.tokenizer.batch_decode(
+                    output_ids,
+                    skip_special_tokens=True
+                )[0]
+                
+                print(f"OmniVinci image analysis completed: {len(response)} characters")
+                
+                return {
+                    "analysis": response,
+                    "prompt": prompt,
+                    "success": True
+                }
+            
+            finally:
+                # Clean up temp file
+                if os.path.exists(image_path):
+                    os.unlink(image_path)
+        
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"OmniVinci image analysis error: {e}")
+            print(f"Traceback: {error_trace}")
+            return {
+                "analysis": None,
+                "error": str(e),
+                "traceback": error_trace,
                 "success": False
             }
 

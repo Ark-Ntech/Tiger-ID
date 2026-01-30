@@ -10,11 +10,15 @@ import { cn } from '../../utils/cn'
 interface AlertProps {
   type?: 'info' | 'success' | 'warning' | 'error'
   title?: string
-  children: ReactNode
+  children?: ReactNode
+  /** Alias for children - the message to display */
+  message?: string
+  className?: string
   onClose?: () => void
 }
 
-const Alert = ({ type = 'info', title, children, onClose }: AlertProps) => {
+const Alert = ({ type = 'info', title, children, message, className, onClose }: AlertProps) => {
+  const content = children || message
   const styles = {
     info: {
       container: 'bg-blue-50 border-blue-200',
@@ -50,14 +54,14 @@ const Alert = ({ type = 'info', title, children, onClose }: AlertProps) => {
   const Icon = style.Icon
 
   return (
-    <div className={cn('border rounded-lg p-4', style.container)}>
+    <div className={cn('border rounded-lg p-4', style.container, className)}>
       <div className="flex">
         <div className="flex-shrink-0">
           <Icon className={cn('h-5 w-5', style.icon)} />
         </div>
         <div className="ml-3 flex-1">
           {title && <h3 className={cn('text-sm font-medium', style.title)}>{title}</h3>}
-          <div className={cn('text-sm', title ? 'mt-2' : '', style.text)}>{children}</div>
+          <div className={cn('text-sm', title ? 'mt-2' : '', style.text)}>{content}</div>
         </div>
         {onClose && (
           <button

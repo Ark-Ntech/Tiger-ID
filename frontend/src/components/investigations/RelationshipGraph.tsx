@@ -27,10 +27,10 @@ const RelationshipGraph = ({ investigationId, facilityId }: RelationshipGraphPro
     if (!graphData?.network) return { nodes: [], links: [] }
 
     const nodes = graphData.network.nodes.map((node) => ({
+      ...node,
       id: node.id,
       name: node.label || node.name || node.id.substring(0, 8),
       type: node.type || 'unknown',
-      ...node,
     }))
 
     const links = graphData.network.edges.map((edge) => ({

@@ -162,7 +162,7 @@ def run_investigation_workflow(
             # Commit and close session
             try:
                 db.commit()
-            except:
+            except Exception:
                 pass
             
             return final_state
@@ -172,14 +172,14 @@ def run_investigation_workflow(
             if db:
                 try:
                     db.rollback()
-                except:
+                except Exception:
                     pass
             return None
         finally:
             if db:
                 try:
                     db.close()
-                except:
+                except Exception:
                     pass
     
     # Run in new event loop
@@ -330,7 +330,7 @@ async def investigation2_websocket(
     finally:
         try:
             await websocket.close()
-        except:
+        except Exception:
             pass
 
 
@@ -411,10 +411,152 @@ async def get_investigation2_matches(
             matches = investigation.summary.get("top_matches", [])
         
         return JSONResponse(status_code=200, content={"matches": matches})
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get matches: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get matches: {str(e)}")
+
+
+@router.get("/{investigation_id}/enhanced")
+async def get_enhanced_investigation_results(
+    investigation_id: UUID,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get enhanced Investigation 2.0 results with location, methodology, and detailed matches
+
+    This endpoint provides enriched data for the frontend UI components:
+    - Location analysis from multiple sources (EXIF, user context, web intelligence, database matches)
+    - Methodology/reasoning chain showing investigation steps
+    - Detailed match information with stripe comparisons
+    - Citations from web intelligence
+
+    Args:
+        investigation_id: Investigation ID
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        Enhanced investigation results
+    """
+    try:
+        investigation_service = InvestigationService(db)
+        investigation = investigation_service.get_investigation(investigation_id)
+
+        if not investigation:
+            raise HTTPException(status_code=404, detail="Investigation not found")
+
+        # Check permissions
+        if investigation.created_by != current_user.user_id and not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Get report data
+        report = investigation.summary if investigation.summary else {}
+
+        if not report:
+            raise HTTPException(status_code=404, detail="Investigation not yet completed")
+
+        # Extract enhanced data
+        location_analysis = report.get("location_analysis", {
+            "primary_location": None,
+            "sources": [],
+            "alternative_locations": [],
+            "total_sources": 0
+        })
+
+        methodology = report.get("methodology", [])
+
+        citations = []
+        if "web_intelligence" in report:
+            web_intel = report["web_intelligence"]
+            if isinstance(web_intel, dict):
+                citations = web_intel.get("citations", [])
+
+        # Get detailed matches with facility information
+        matches_with_details = []
+        top_matches = report.get("top_matches", [])
+
+        for match in top_matches:
+            tiger_id = match.get("tiger_id")
+            if not tiger_id:
+                continue
+
+            # Try to get facility information from database
+            try:
+                from backend.database.models import Tiger, Facility
+                tiger = db.query(Tiger).filter(Tiger.tiger_id == UUID(tiger_id)).first()
+
+                facility_info = None
+                if tiger and tiger.origin_facility_id:
+                    facility = db.query(Facility).filter(
+                        Facility.facility_id == tiger.origin_facility_id
+                    ).first()
+
+                    if facility:
+                        # Parse coordinates if available
+                        coords = None
+                        if facility.coordinates:
+                            try:
+                                coords_data = json.loads(facility.coordinates) if isinstance(facility.coordinates, str) else facility.coordinates
+                                coords = {
+                                    "lat": coords_data.get("latitude"),
+                                    "lon": coords_data.get("longitude")
+                                }
+                            except Exception:
+                                pass
+
+                        facility_info = {
+                            "name": facility.exhibitor_name,
+                            "location": f"{facility.city}, {facility.state}" if facility.city and facility.state else facility.state or "Unknown",
+                            "coordinates": coords,
+                            "address": facility.address
+                        }
+
+                matches_with_details.append({
+                    **match,
+                    "facility": facility_info,
+                    "confidence_breakdown": {
+                        "stripe_similarity": match.get("similarity", 0),
+                        "visual_features": 0.8,  # Placeholder - could be calculated from model data
+                        "historical_context": 0.7  # Placeholder - could be based on last_seen_date
+                    }
+                })
+            except Exception as e:
+                logger.warning(f"Failed to get facility for tiger {tiger_id}: {e}")
+                matches_with_details.append({
+                    **match,
+                    "facility": None,
+                    "confidence_breakdown": {
+                        "stripe_similarity": match.get("similarity", 0),
+                        "visual_features": 0.8,
+                        "historical_context": 0.7
+                    }
+                })
+
+        # Build enhanced response
+        enhanced_results = {
+            "investigation_id": str(investigation_id),
+            "status": investigation.status.value if hasattr(investigation.status, 'value') else str(investigation.status),
+            "location_analysis": location_analysis,
+            "matches": matches_with_details,
+            "citations": citations,
+            "methodology": methodology,
+            "report": report.get("summary", ""),
+            "detection_count": report.get("detection_count", 0),
+            "models_used": report.get("models_used", []),
+            "confidence": report.get("confidence", "medium"),
+            "created_at": investigation.created_at.isoformat() if investigation.created_at else None,
+            "completed_at": investigation.completed_at.isoformat() if investigation.completed_at else None
+        }
+
+        return JSONResponse(status_code=200, content=enhanced_results)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get enhanced results: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get enhanced results: {str(e)}")
 

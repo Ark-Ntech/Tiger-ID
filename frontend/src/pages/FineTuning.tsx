@@ -4,9 +4,8 @@ import Card from '../components/common/Card'
 import Button from '../components/common/Button'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Badge from '../components/common/Badge'
-import Alert from '../components/common/Alert'
 import Modal from '../components/common/Modal'
-import { CpuChipIcon, ArrowLeftIcon, PlayIcon, StopIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
+import { CpuChipIcon, ArrowLeftIcon, PlayIcon, StopIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 
 // Mock API hooks - these would be replaced with actual RTK Query hooks
 const useFineTuningJobs = () => {

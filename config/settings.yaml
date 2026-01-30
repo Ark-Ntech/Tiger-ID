@@ -80,7 +80,7 @@ models:
   reid:
     path: ${REID_MODEL_PATH:-./data/models/tiger_reid_model.pth}
     similarity_threshold: 0.8
-    embedding_dim: 512
+    embedding_dim: 2048
   rapid:
     path: ${RAPID_MODEL_PATH:-./data/models/rapid/checkpoints/model.pth}
     similarity_threshold: 0.8

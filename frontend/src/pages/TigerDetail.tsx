@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useGetTigerQuery, useLaunchInvestigationFromTigerMutation } from '../app/api'
 import Card from '../components/common/Card'
@@ -6,7 +6,7 @@ import Button from '../components/common/Button'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Badge from '../components/common/Badge'
 import Alert from '../components/common/Alert'
-import { ShieldCheckIcon, ArrowLeftIcon, MagnifyingGlassIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, MagnifyingGlassIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 const TigerDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -18,7 +18,7 @@ const TigerDetail = () => {
   const { data, isLoading, error } = useGetTigerQuery(id || '')
   const [launchInvestigationFromTiger] = useLaunchInvestigationFromTigerMutation()
 
-  const tiger = data?.data?.data || data?.data
+  const tiger = data?.data
 
   const handleLaunchInvestigation = async () => {
     if (!id) return

@@ -25,7 +25,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const wsRef = useRef<WebSocket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [reconnectAttempts, setReconnectAttempts] = useState(0)
 
   const connect = useCallback(() => {
@@ -138,7 +138,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     return () => {
       disconnect()
     }
-  }, [autoConnect, token])
+  }, [autoConnect, token, connect, disconnect])
 
   return {
     isConnected,

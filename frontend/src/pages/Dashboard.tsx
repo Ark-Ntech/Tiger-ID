@@ -224,14 +224,15 @@ const Dashboard = () => {
 
   // Model performance data - use Modal model metadata instead of mock data
   const { data: modelsData, isLoading: modelsLoading } = useGetModelsAvailableQuery()
-  const [benchmarkModel, { isLoading: benchmarkLoading }] = useBenchmarkModelMutation()
+  const [_benchmarkModel, { isLoading: benchmarkLoading }] = useBenchmarkModelMutation()
+  void _benchmarkModel // Reserved for benchmark feature
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [benchmarkResults, setBenchmarkResults] = useState<any>(null)
   const [isBenchmarking, setIsBenchmarking] = useState(false)
 
-  const availableModels = modelsData?.data?.models || {}
-  const modelNames = Object.keys(availableModels)
-  
+  const availableModels = useMemo(() => modelsData?.data?.models || {}, [modelsData?.data?.models])
+  const modelNames = useMemo(() => Object.keys(availableModels), [availableModels])
+
   // Use Modal model metadata instead of mock data
   const performanceData = useMemo(() => {
     return modelNames.map((modelName) => {
@@ -505,13 +506,14 @@ const Dashboard = () => {
 
 // Investigation Analytics Tab Component
 const InvestigationAnalyticsTab = ({
-  analytics,
+  _analytics,
   investigationsByStatus,
   investigationsByPriority,
   investigationsTimeline,
   investigations,
   navigate,
 }: any) => {
+  void _analytics // Reserved for future analytics features
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -529,7 +531,7 @@ const InvestigationAnalyticsTab = ({
                 fill="#8884d8"
                 dataKey="value"
               >
-                {investigationsByStatus.map((entry: any, index: number) => (
+                {investigationsByStatus.map((_entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -635,7 +637,7 @@ const EvidenceVerificationAnalyticsTab = ({ evidenceAnalytics, verificationAnaly
                 fill="#8884d8"
                 dataKey="value"
               >
-                {evidenceByType.map((entry: any, index: number) => (
+                {evidenceByType.map((_entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -810,7 +812,7 @@ const TigerAnalyticsTab = ({ analytics, tigerIdentifications, navigate }: any) =
                 fill="#8884d8"
                 dataKey="value"
               >
-                {tigersByStatus.map((entry: any, index: number) => (
+                {tigersByStatus.map((_entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -917,7 +919,7 @@ const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
                 fill="#8884d8"
                 dataKey="count"
               >
-                {facilitiesByState.slice(0, 8).map((entry: any, index: number) => (
+                {facilitiesByState.slice(0, 8).map((_entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -975,7 +977,8 @@ const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
 
 // Agent Analytics Tab Component
 const AgentAnalyticsTab = ({ analytics }: any) => {
-  const agentPerformance = analytics?.agent_performance || []
+  const _agentPerformance = analytics?.agent_performance || []
+  void _agentPerformance // Reserved for agent performance chart
   const agentSuccessRates = analytics?.agent_success_rates
     ? Object.entries(analytics.agent_success_rates).map(([agent, data]: [string, any]) => ({
         agent,
@@ -1093,7 +1096,7 @@ const ModelPerformanceTab = ({
             <h3 className="text-xl font-semibold">Accuracy Comparison</h3>
           </div>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={performanceData.filter(d => d.rank1_accuracy !== null)}>
+            <BarChart data={performanceData.filter((d: { rank1_accuracy: number | null }) => d.rank1_accuracy !== null)}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis domain={[0, 1]} />
@@ -1103,7 +1106,7 @@ const ModelPerformanceTab = ({
               <Bar dataKey="map" fill="#10b981" name="mAP" />
             </BarChart>
           </ResponsiveContainer>
-          {performanceData.filter(d => d.rank1_accuracy === null).length > 0 && (
+          {performanceData.filter((d: { rank1_accuracy: number | null }) => d.rank1_accuracy === null).length > 0 && (
             <p className="text-sm text-gray-500 mt-2">
               Performance metrics require benchmarks. Use the Model Testing page to run benchmarks.
             </p>

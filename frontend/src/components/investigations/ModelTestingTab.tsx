@@ -3,7 +3,6 @@ import { useTestModelMutation, useGetModelsAvailableQuery } from '../../app/api'
 import Card from '../common/Card'
 import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
-import Alert from '../common/Alert'
 import Badge from '../common/Badge'
 import { PhotoIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 

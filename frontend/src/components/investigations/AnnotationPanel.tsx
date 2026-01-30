@@ -11,7 +11,7 @@ import Button from '../common/Button'
 import Badge from '../common/Badge'
 import { formatDate } from '../../utils/formatters'
 import { Annotation } from '../../types'
-import { XMarkIcon, PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline'
 
 interface AnnotationPanelProps {
   investigationId: string
@@ -37,7 +37,7 @@ const AnnotationPanel = ({ investigationId }: AnnotationPanelProps) => {
   const [updateAnnotation] = useUpdateAnnotationMutation()
   const [deleteAnnotation] = useDeleteAnnotationMutation()
 
-  const annotations = data?.data || []
+  const annotations = data?.data?.annotations || []
 
   const handleCreate = async () => {
     if (!formData.content.trim()) return
@@ -64,7 +64,7 @@ const AnnotationPanel = ({ investigationId }: AnnotationPanelProps) => {
   const handleUpdate = async (id: string, content: string) => {
     try {
       await updateAnnotation({
-        id,
+        annotation_id: id,
         data: { content },
       }).unwrap()
       setEditingId(null)

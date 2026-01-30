@@ -14,7 +14,8 @@ const ModelDashboard = () => {
   const [isBenchmarking, setIsBenchmarking] = useState(false)
 
   const { data: modelsData, isLoading: modelsLoading } = useGetModelsAvailableQuery()
-  const [benchmarkModel, { isLoading: benchmarkLoading }] = useBenchmarkModelMutation()
+  const [_benchmarkModel, { isLoading: benchmarkLoading }] = useBenchmarkModelMutation()
+  void _benchmarkModel // Reserved for benchmark feature
 
   const availableModels = modelsData?.data?.models || {}
   const modelNames = Object.keys(availableModels)

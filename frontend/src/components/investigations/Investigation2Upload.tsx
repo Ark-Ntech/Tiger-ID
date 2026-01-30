@@ -1,6 +1,5 @@
 import { useRef } from 'react'
 import Card from '../common/Card'
-import Button from '../common/Button'
 import { PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 interface Investigation2UploadProps {

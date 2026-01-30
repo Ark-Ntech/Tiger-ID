@@ -7,7 +7,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner'
 import Badge from '../components/common/Badge'
 import Alert from '../components/common/Alert'
 import Modal from '../components/common/Modal'
-import { ShieldCheckIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { ShieldCheckIcon, PhotoIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 
 // Model information helper
 const getModelInfo = (modelName: string) => {
@@ -53,7 +53,8 @@ const getModelInfo = (modelName: string) => {
 
 const Tigers = () => {
   const navigate = useNavigate()
-  const [page, setPage] = useState(1)
+  const [page, _setPage] = useState(1)
+  void _setPage // Reserved for pagination feature
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showRegistrationModal, setShowRegistrationModal] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('')
@@ -74,7 +75,8 @@ const Tigers = () => {
   const [identifyTiger, { isLoading: identifying }] = useIdentifyTigerMutation()
   const [identifyBatch, { isLoading: batchIdentifying }] = useIdentifyTigersBatchMutation()
   const [createInvestigation] = useCreateInvestigationMutation()
-  const [launchInvestigation] = useLaunchInvestigationMutation()
+  const [_launchInvestigation] = useLaunchInvestigationMutation()
+  void _launchInvestigation // Alternative launch method
   const [createTiger] = useCreateTigerMutation()
   const [launchInvestigationFromTiger] = useLaunchInvestigationFromTigerMutation()
 

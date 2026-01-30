@@ -25,7 +25,7 @@ const RelationshipsView = ({ investigationId }: RelationshipsViewProps) => {
   const relatedFacilities = useMemo(() => {
     // This would come from investigation data if available
     return []
-  }, [investigation])
+  }, [])
   
   if (investigationLoading) {
     return (

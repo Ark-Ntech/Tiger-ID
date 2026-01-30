@@ -102,15 +102,19 @@ class OmniVinciSettings(BaseSettings):
 
 
 class OpenAISettings(BaseSettings):
-    """OpenAI chat model configuration"""
+    """OpenAI chat model configuration (DEPRECATED - not used, kept for compatibility)
+
+    Note: This application uses Anthropic Claude for AI chat and analysis.
+    OpenAI settings are preserved for potential future use but not actively used.
+    """
     api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
-    model: str = Field(default="gpt-5-mini", alias="OPENAI_MODEL")
+    model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
     max_tokens: int = Field(default=2048, alias="OPENAI_MAX_TOKENS")
     temperature: float = Field(default=0.7, alias="OPENAI_TEMPERATURE")
 
 
 class GeminiSettings(BaseSettings):
-    """Google Gemini chat model configuration"""
+    """Google Gemini chat model configuration (deprecated - use AnthropicSettings)"""
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -124,6 +128,22 @@ class GeminiSettings(BaseSettings):
     max_tokens: int = Field(default=8192, alias="GEMINI_MAX_TOKENS")
     temperature: float = Field(default=0.7, alias="GEMINI_TEMPERATURE")
     enable_search_grounding: bool = Field(default=True, alias="GEMINI_SEARCH_GROUNDING")
+
+
+class AnthropicSettings(BaseSettings):
+    """Anthropic Claude chat model configuration"""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+    api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
+    fast_model: str = Field(default="claude-sonnet-4-5-20250929", alias="ANTHROPIC_FAST_MODEL")
+    quality_model: str = Field(default="claude-opus-4-5-20251101", alias="ANTHROPIC_QUALITY_MODEL")
+    max_tokens: int = Field(default=8192, alias="ANTHROPIC_MAX_TOKENS")
+    temperature: float = Field(default=0.7, alias="ANTHROPIC_TEMPERATURE")
 
 
 class FirecrawlSettings(BaseSettings):
@@ -302,6 +322,7 @@ class AppSettings(BaseSettings):
     omnivinci: OmniVinciSettings = OmniVinciSettings()
     openai: OpenAISettings = OpenAISettings()
     gemini: GeminiSettings = GeminiSettings()
+    anthropic: AnthropicSettings = AnthropicSettings()
     firecrawl: FirecrawlSettings = FirecrawlSettings()
     puppeteer: PuppeteerSettings = PuppeteerSettings()
     web_search: WebSearchSettings = WebSearchSettings()

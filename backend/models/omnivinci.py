@@ -111,36 +111,41 @@ class OmniVinciModel:
     
     async def analyze_image(
         self,
-        image: Image.Image,
-        prompt: str = "Analyze this image and describe what you see. Focus on identifying any tigers."
+        image_bytes: bytes,
+        prompt: str = "Analyze this tiger image in detail. Describe the tiger's physical characteristics, visible stripe patterns, pose, behavior, and environmental context. Provide insights that would help with individual identification."
     ) -> Dict[str, Any]:
         """
-        Analyze an image using OmniVinci.
+        Analyze an image using OmniVinci's omni-modal understanding.
         
-        Note: OmniVinci is primarily for video analysis. For image analysis,
-        consider using TigerReIDModel or MegaDetector.
+        OmniVinci provides rich visual analysis that goes beyond pattern matching,
+        offering contextual understanding of the scene, tiger behavior, and environmental factors.
         
         Args:
-            image: PIL Image
-            prompt: Analysis prompt
+            image_bytes: Image as bytes
+            prompt: Analysis prompt for what to focus on
             
         Returns:
-            Dictionary with analysis results
+            Dictionary with detailed analysis results
         """
         try:
-            # Convert image to temporary video-like format
-            # This is a workaround since OmniVinci is video-focused
-            logger.warning("Image analysis with OmniVinci is not optimized. Consider using TigerReIDModel instead.")
+            logger.info("Analyzing image with OmniVinci omni-modal model...")
             
-            # For now, return a placeholder
-            return {
-                "success": False,
-                "error": "Image analysis not supported. Use video analysis or TigerReIDModel.",
-                "analysis": None
-            }
+            # Call Modal OmniVinci service for image analysis
+            result = await self.modal_client.omnivinci_analyze_image(
+                image_bytes=image_bytes,
+                prompt=prompt
+            )
+            
+            if result.get("success"):
+                logger.info(f"OmniVinci image analysis completed: {len(result.get('analysis', ''))} chars")
+                return result
+            else:
+                error = result.get("error", "Unknown error")
+                logger.error(f"OmniVinci image analysis failed: {error}")
+                raise RuntimeError(f"OmniVinci analysis failed: {error}")
             
         except Exception as e:
-            logger.error(f"Error analyzing image: {e}")
+            logger.error(f"Error analyzing image with OmniVinci: {e}")
             raise
 
 

@@ -24,7 +24,7 @@ from backend.models.cvwc2019_reid import CVWC2019ReIDModel
 from backend.models.rapid_reid import RAPIDReIDModel
 from backend.models.wildlife_tools import WildlifeToolsReIDModel
 from backend.models.omnivinci import OmniVinciModel
-from backend.models.gemini_chat import get_gemini_flash_model, get_gemini_pro_model
+from backend.models.anthropic_chat import get_anthropic_fast_model, get_anthropic_quality_model
 from backend.database.vector_search import find_matching_tigers
 from backend.events.event_types import EventType
 from backend.utils.logging import get_logger
@@ -220,11 +220,11 @@ class Investigation2Workflow:
             }
     
     async def _reverse_image_search_node(self, state: Investigation2State) -> Investigation2State:
-        """Perform web intelligence search using Gemini Search Grounding"""
+        """Perform web intelligence search using Anthropic Claude with web search tools"""
         try:
             logger.info(f"[WEB INTELLIGENCE NODE] ========== STARTING WEB INTELLIGENCE SEARCH ==========")
             logger.info(f"[WEB INTELLIGENCE NODE] Investigation ID: {state['investigation_id']}")
-            logger.info("Starting web intelligence search with Gemini Search Grounding", investigation_id=state["investigation_id"])
+            logger.info("Starting web intelligence search with Anthropic Claude", investigation_id=state["investigation_id"])
 
             # Emit event
             await self.event_service.emit(
@@ -239,8 +239,8 @@ class Investigation2Workflow:
             date = context.get("date", "recent")
             notes = context.get("notes", "")
 
-            # Use Gemini Flash to generate optimized search query
-            gemini_flash = get_gemini_flash_model()
+            # Use Anthropic fast model to generate optimized search query
+            anthropic_fast = get_anthropic_fast_model()
 
             query_prompt = f"""Generate an optimal web search query for finding information about tiger trafficking and captivity.
 
@@ -258,9 +258,9 @@ Generate a search query that will find:
 Return ONLY the search query text, no explanation."""
 
             logger.info("[WEB INTELLIGENCE] Generating search query...")
-            query_result = await gemini_flash.chat(
+            query_result = await anthropic_fast.chat(
                 message=query_prompt,
-                enable_search_grounding=False,
+                enable_web_search=False,
                 temperature=0.3,
                 max_tokens=100
             )
@@ -271,9 +271,9 @@ Return ONLY the search query text, no explanation."""
             search_query = query_result.get("response", "").strip()
             logger.info(f"[WEB INTELLIGENCE] Generated query: {search_query}")
 
-            # Perform web search with Gemini Search Grounding
-            logger.info("[WEB INTELLIGENCE] Executing Gemini Search Grounding...")
-            search_result = await gemini_flash.chat(
+            # Perform web search with Anthropic + Firecrawl
+            logger.info("[WEB INTELLIGENCE] Executing Anthropic web search...")
+            search_result = await anthropic_fast.chat(
                 message=f"""Search for intelligence about: {search_query}
 
 Provide a comprehensive summary including:
@@ -284,13 +284,13 @@ Provide a comprehensive summary including:
 - Any relevant tiger-related activities in {location}
 
 Focus on factual, verifiable information with specific dates, locations, and sources.""",
-                enable_search_grounding=True,
+                enable_web_search=True,
                 temperature=0.5,
                 max_tokens=2048
             )
 
             if not search_result.get("success"):
-                raise RuntimeError(f"Search grounding failed: {search_result.get('error')}")
+                raise RuntimeError(f"Web search failed: {search_result.get('error')}")
 
             # Extract results
             summary = search_result.get("response", "")
@@ -300,13 +300,15 @@ Focus on factual, verifiable information with specific dates, locations, and sou
 
             # Format results in compatible structure
             reverse_search_results = {
-                "provider": "gemini_search_grounding",
+                "provider": "anthropic_web_search",
                 "query": search_query,
                 "summary": summary,
                 "citations": citations,
                 "total_results": len(citations),
                 "providers_searched": 1,
-                "model_used": "gemini-2.5-flash"
+                "model_used": anthropic_fast.model_name,
+                "status": "success" if citations else "no_results",
+                "error": None if citations else "No web sources found for the query"
             }
 
             # Store results
@@ -317,7 +319,7 @@ Focus on factual, verifiable information with specific dates, locations, and sou
                     agent_name="investigation2",
                     status="completed",
                     result={
-                        "provider": "gemini_search_grounding",
+                        "provider": "anthropic_web_search",
                         "citations_found": len(citations),
                         "query": search_query
                     }
@@ -339,19 +341,34 @@ Focus on factual, verifiable information with specific dates, locations, and sou
 
             # Add reasoning step
             reasoning_steps = state.get("reasoning_steps", [])
-            reasoning_steps.append({
-                "step": len(reasoning_steps) + 1,
-                "phase": "Web Intelligence",
-                "action": f"Executed Gemini Search Grounding with query: {search_query}",
-                "reasoning": f"Generated optimized query based on location ({location}) and context to find tiger trafficking intelligence",
-                "evidence": [
-                    f"Found {len(citations)} web sources",
-                    f"Generated {len(summary)} character summary",
-                    f"Search focused on: {location}"
-                ],
-                "conclusion": f"High confidence web intelligence gathered from {len(citations)} authoritative sources",
-                "confidence": 85 if len(citations) > 5 else 60
-            })
+            if citations:
+                reasoning_steps.append({
+                    "step": len(reasoning_steps) + 1,
+                    "phase": "Web Intelligence",
+                    "action": f"Executed Anthropic web search with query: {search_query}",
+                    "reasoning": f"Generated optimized query based on location ({location}) and context to find tiger trafficking intelligence",
+                    "evidence": [
+                        f"Found {len(citations)} web sources",
+                        f"Generated {len(summary)} character summary",
+                        f"Search focused on: {location}"
+                    ],
+                    "conclusion": f"High confidence web intelligence gathered from {len(citations)} authoritative sources",
+                    "confidence": 85 if len(citations) > 5 else 60
+                })
+            else:
+                reasoning_steps.append({
+                    "step": len(reasoning_steps) + 1,
+                    "phase": "Web Intelligence",
+                    "action": f"Attempted web search with query: {search_query}",
+                    "reasoning": f"Generated optimized query based on location ({location}) and context to find tiger trafficking intelligence",
+                    "evidence": [
+                        "No web sources returned from search providers",
+                        f"Search focused on: {location}",
+                        "This may be due to API limitations or no matching results"
+                    ],
+                    "conclusion": "Web intelligence unavailable - proceeding with other analysis methods",
+                    "confidence": 30
+                })
 
             return {
                 **state,
@@ -578,15 +595,17 @@ Focus on factual, verifiable information with specific dates, locations, and sou
             # Collect results
             stripe_embeddings = {}
             database_matches = {}
-            
+
             for model_name, embedding, matches in results:
                 if embedding is not None:
                     stripe_embeddings[model_name] = embedding
                 database_matches[model_name] = matches
-            
+
+            # Calculate total_matches BEFORE the conditional block so it's always available
+            total_matches = sum(len(m) for m in database_matches.values())
+
             # Store results
             if self.investigation_service:
-                total_matches = sum(len(m) for m in database_matches.values())
                 self.investigation_service.add_investigation_step(
                     UUID(state["investigation_id"]),
                     step_type="stripe_analysis",
@@ -594,7 +613,7 @@ Focus on factual, verifiable information with specific dates, locations, and sou
                     status="completed",
                     result={
                         "models_run": len(stripe_embeddings),
-                        "total_matches": total_matches
+                        "total_matches": total_matches,
                     }
                 )
             
@@ -800,9 +819,9 @@ Provide a detailed comparison analysis."""
             }
     
     async def _report_generation_node(self, state: Investigation2State) -> Investigation2State:
-        """Generate investigation report using Gemini 2.5 Pro"""
+        """Generate investigation report using Anthropic Claude"""
         try:
-            logger.info("Starting report generation with Gemini Pro", investigation_id=state["investigation_id"])
+            logger.info("Starting report generation with Anthropic Claude", investigation_id=state["investigation_id"])
 
             # Emit event
             await self.event_service.emit(
@@ -830,15 +849,15 @@ Analysis Type: {omnivinci_comparison.get('analysis_type', 'automated')}
 Confidence Level: {omnivinci_comparison.get('confidence', 'medium')}
 """
 
-            # Extract web intelligence insights from Gemini Search Grounding
+            # Extract web intelligence insights from Anthropic web search
             web_intelligence_summary = ""
             if reverse_search and isinstance(reverse_search, dict):
-                if reverse_search.get('provider') == 'gemini_search_grounding':
+                if reverse_search.get('provider') in ['anthropic_web_search', 'gemini_search_grounding']:
                     citations = reverse_search.get('citations', [])
                     summary = reverse_search.get('summary', '')
                     web_intelligence_summary = f"""
 
-## Web Intelligence (Gemini Search Grounding)
+## Web Intelligence (Anthropic Web Search)
 **Search Query:** {reverse_search.get('query', 'N/A')}
 **Sources Found:** {len(citations)}
 
@@ -902,7 +921,7 @@ Generate a structured professional report with these sections:
 - **Incorporate OmniVinci's detailed visual observations**
 
 ### 3. WEB INTELLIGENCE & EXTERNAL CONTEXT
-- Synthesize findings from Gemini Search Grounding
+- Synthesize findings from Anthropic web search
 - Relevant tiger trafficking incidents or facilities in the region
 - Law enforcement or conservation activities
 - Any external references that provide context
@@ -937,13 +956,13 @@ Generate a structured professional report with these sections:
 **FORMAT:** Clear sections with bullet points and specific details.
 **LENGTH:** Comprehensive but concise - focus on actionable intelligence."""
 
-            # Use Gemini 2.5 Pro for high-quality report generation
-            gemini_pro = get_gemini_pro_model()
+            # Use Anthropic quality model for high-quality report generation
+            anthropic_quality = get_anthropic_quality_model()
 
-            logger.info("[REPORT] Generating report with Gemini 2.5 Pro...")
-            result = await gemini_pro.chat(
+            logger.info("[REPORT] Generating report with Anthropic Claude...")
+            result = await anthropic_quality.chat(
                 message=prompt,
-                enable_search_grounding=False,
+                enable_web_search=False,
                 max_tokens=4096,
                 temperature=0.7
             )
@@ -965,7 +984,7 @@ Generate a structured professional report with these sections:
                 "total_matches": sum(len(m) for m in database_matches.values()),
                 "top_matches": self._extract_top_matches(database_matches),
                 "confidence": omnivinci_comparison.get('confidence', 'medium') if omnivinci_comparison else 'medium',
-                "model_used": "gemini-2.5-pro"
+                "model_used": anthropic_quality.model_name
             }
 
             # Store results
@@ -977,7 +996,7 @@ Generate a structured professional report with these sections:
                     status="completed",
                     result={
                         "report_length": len(report_text),
-                        "model": "gemini-2.5-pro"
+                        "model": anthropic_quality.model_name
                     }
                 )
 
@@ -996,7 +1015,7 @@ Generate a structured professional report with these sections:
             reasoning_steps.append({
                 "step": len(reasoning_steps) + 1,
                 "phase": "Report Generation",
-                "action": f"Generated comprehensive investigation report using Gemini 2.5 Pro",
+                "action": f"Generated comprehensive investigation report using Anthropic Claude",
                 "reasoning": "Synthesized all findings from web intelligence, detection, ReID analysis, and visual comparison into cohesive narrative",
                 "evidence": [
                     f"Generated {len(report_text)} character report",
