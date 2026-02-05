@@ -1,11 +1,12 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import axios from 'axios'
-import type { User, LoginCredentials, AuthResponse } from '../../types'
-
-// Use Vite proxy in development, direct URL in production
-const API_URL = import.meta.env.PROD 
-  ? (import.meta.env.VITE_API_URL || 'http://localhost:8000')
-  : '' // Empty string uses Vite proxy
+/**
+ * Auth slice for Redux state management.
+ *
+ * Manages authentication state (user, token, isAuthenticated).
+ * Listens to RTK Query auth endpoints for state updates.
+ */
+import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import type { User } from '../../types'
+import { authApi } from '../../app/api/authApi'
 
 interface AuthState {
   user: User | null
@@ -23,146 +24,178 @@ const initialState: AuthState = {
   error: null,
 }
 
-// Async thunks
-export const login = createAsyncThunk<AuthResponse, LoginCredentials>(
-  'auth/login',
-  async (credentials, { rejectWithValue }) => {
-    try {
-      const response = await axios.post(`${API_URL}/api/auth/login`, credentials)
-      return response.data
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Login failed')
-    }
-  }
-)
-
-export const logout = createAsyncThunk('auth/logout', async () => {
-  try {
-    await axios.post(`${API_URL}/api/auth/logout`)
-  } catch (error) {
-    // Logout locally even if API call fails
-    console.error('Logout error:', error)
-  }
-})
-
-export const register = createAsyncThunk<
-  AuthResponse,
-  {
-    username: string
-    email: string
-    password: string
-    full_name?: string
-  }
->('auth/register', async (data, { rejectWithValue }) => {
-  try {
-    const response = await axios.post(`${API_URL}/api/auth/register`, data)
-    return response.data
-  } catch (error: any) {
-    return rejectWithValue(error.response?.data?.message || 'Registration failed')
-  }
-})
-
-export const requestPasswordReset = createAsyncThunk<void, string>(
-  'auth/requestPasswordReset',
-  async (email, { rejectWithValue }) => {
-    try {
-      await axios.post(`${API_URL}/api/auth/password-reset/request`, { email })
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Password reset request failed')
-    }
-  }
-)
-
-export const confirmPasswordReset = createAsyncThunk<
-  void,
-  { token: string; new_password: string }
->('auth/confirmPasswordReset', async (data, { rejectWithValue }) => {
-  try {
-    await axios.post(`${API_URL}/api/auth/password-reset/confirm`, data)
-  } catch (error: any) {
-    return rejectWithValue(error.response?.data?.message || 'Password reset failed')
-  }
-})
-
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
+    /**
+     * Clear any auth error
+     */
     clearError: (state) => {
       state.error = null
     },
+
+    /**
+     * Manually set the user (e.g., from getCurrentUser query)
+     */
     setUser: (state, action: PayloadAction<User>) => {
       state.user = action.payload
     },
+
+    /**
+     * Manually trigger logout (used by baseApi on 401)
+     */
+    logout: (state) => {
+      state.user = null
+      state.token = null
+      state.isAuthenticated = false
+      state.error = null
+      localStorage.removeItem('token')
+    },
   },
   extraReducers: (builder) => {
+    // =========================================================================
+    // Login mutation
+    // =========================================================================
     builder
-      // Login
-      .addCase(login.pending, (state) => {
+      .addMatcher(authApi.endpoints.login.matchPending, (state) => {
         state.loading = true
         state.error = null
       })
-      .addCase(login.fulfilled, (state, action) => {
+      .addMatcher(authApi.endpoints.login.matchFulfilled, (state, action) => {
         state.loading = false
         state.isAuthenticated = true
         state.user = action.payload.user
         state.token = action.payload.access_token
         localStorage.setItem('token', action.payload.access_token)
       })
-      .addCase(login.rejected, (state, action) => {
+      .addMatcher(authApi.endpoints.login.matchRejected, (state, action) => {
         state.loading = false
-        state.error = action.payload as string
+        state.error = (action.payload as any)?.data?.message ||
+                      (action.payload as any)?.data?.detail ||
+                      action.error?.message ||
+                      'Login failed'
       })
-      // Logout
-      .addCase(logout.fulfilled, (state) => {
+
+    // =========================================================================
+    // Logout mutation
+    // =========================================================================
+    builder
+      .addMatcher(authApi.endpoints.logout.matchPending, (state) => {
+        state.loading = true
+      })
+      .addMatcher(authApi.endpoints.logout.matchFulfilled, (state) => {
+        state.loading = false
         state.user = null
         state.token = null
         state.isAuthenticated = false
         localStorage.removeItem('token')
       })
-      // Register
-      .addCase(register.pending, (state) => {
+      .addMatcher(authApi.endpoints.logout.matchRejected, (state) => {
+        // Clear auth state even if API call fails
+        state.loading = false
+        state.user = null
+        state.token = null
+        state.isAuthenticated = false
+        localStorage.removeItem('token')
+      })
+
+    // =========================================================================
+    // Register mutation
+    // =========================================================================
+    builder
+      .addMatcher(authApi.endpoints.register.matchPending, (state) => {
         state.loading = true
         state.error = null
       })
-      .addCase(register.fulfilled, (state, action) => {
+      .addMatcher(authApi.endpoints.register.matchFulfilled, (state, action) => {
         state.loading = false
         state.isAuthenticated = true
         state.user = action.payload.user
         state.token = action.payload.access_token
         localStorage.setItem('token', action.payload.access_token)
       })
-      .addCase(register.rejected, (state, action) => {
+      .addMatcher(authApi.endpoints.register.matchRejected, (state, action) => {
         state.loading = false
-        state.error = action.payload as string
+        state.error = (action.payload as any)?.data?.message ||
+                      (action.payload as any)?.data?.detail ||
+                      action.error?.message ||
+                      'Registration failed'
       })
-      // Password reset request
-      .addCase(requestPasswordReset.pending, (state) => {
+
+    // =========================================================================
+    // Request password reset mutation
+    // =========================================================================
+    builder
+      .addMatcher(authApi.endpoints.requestPasswordReset.matchPending, (state) => {
         state.loading = true
         state.error = null
       })
-      .addCase(requestPasswordReset.fulfilled, (state) => {
+      .addMatcher(authApi.endpoints.requestPasswordReset.matchFulfilled, (state) => {
         state.loading = false
       })
-      .addCase(requestPasswordReset.rejected, (state, action) => {
+      .addMatcher(authApi.endpoints.requestPasswordReset.matchRejected, (state, action) => {
         state.loading = false
-        state.error = action.payload as string
+        state.error = (action.payload as any)?.data?.message ||
+                      (action.payload as any)?.data?.detail ||
+                      action.error?.message ||
+                      'Password reset request failed'
       })
-      // Password reset confirm
-      .addCase(confirmPasswordReset.pending, (state) => {
+
+    // =========================================================================
+    // Confirm password reset mutation
+    // =========================================================================
+    builder
+      .addMatcher(authApi.endpoints.confirmPasswordReset.matchPending, (state) => {
         state.loading = true
         state.error = null
       })
-      .addCase(confirmPasswordReset.fulfilled, (state) => {
+      .addMatcher(authApi.endpoints.confirmPasswordReset.matchFulfilled, (state) => {
         state.loading = false
       })
-      .addCase(confirmPasswordReset.rejected, (state, action) => {
+      .addMatcher(authApi.endpoints.confirmPasswordReset.matchRejected, (state, action) => {
         state.loading = false
-        state.error = action.payload as string
+        state.error = (action.payload as any)?.data?.message ||
+                      (action.payload as any)?.data?.detail ||
+                      action.error?.message ||
+                      'Password reset failed'
+      })
+
+    // =========================================================================
+    // Refresh token mutation
+    // =========================================================================
+    builder
+      .addMatcher(authApi.endpoints.refreshToken.matchFulfilled, (state, action) => {
+        state.token = action.payload.access_token
+        localStorage.setItem('token', action.payload.access_token)
+      })
+      .addMatcher(authApi.endpoints.refreshToken.matchRejected, (state) => {
+        // If refresh fails, clear auth state
+        state.user = null
+        state.token = null
+        state.isAuthenticated = false
+        localStorage.removeItem('token')
+      })
+
+    // =========================================================================
+    // Get current user query
+    // =========================================================================
+    builder
+      .addMatcher(authApi.endpoints.getCurrentUser.matchFulfilled, (state, action) => {
+        if (action.payload.data) {
+          state.user = action.payload.data
+          state.isAuthenticated = true
+        }
+      })
+      .addMatcher(authApi.endpoints.getCurrentUser.matchRejected, (state) => {
+        // If we can't get the user, clear auth state
+        state.user = null
+        state.token = null
+        state.isAuthenticated = false
+        localStorage.removeItem('token')
       })
   },
 })
 
-export const { clearError, setUser } = authSlice.actions
+export const { clearError, setUser, logout } = authSlice.actions
 export default authSlice.reducer
-

@@ -11,6 +11,12 @@ __all__ = [
     "EmbeddingService",
     "IntegrationService",
     "ServiceFactory",
+    "RerankingService",
+    "ConfidenceCalibrator",
+    "ModelComparisonService",
+    "FacilityCrawlerService",
+    "ImagePipelineService",
+    "DiscoveryScheduler",
 ]
 
 
@@ -37,4 +43,22 @@ def __getattr__(name):
     elif name == "ServiceFactory":
         from backend.services.factory import ServiceFactory
         return ServiceFactory
+    elif name == "RerankingService":
+        from backend.services.reranking_service import RerankingService
+        return RerankingService
+    elif name == "ConfidenceCalibrator":
+        from backend.services.confidence_calibrator import ConfidenceCalibrator
+        return ConfidenceCalibrator
+    elif name == "ModelComparisonService":
+        from backend.services.model_comparison_service import ModelComparisonService
+        return ModelComparisonService
+    elif name == "FacilityCrawlerService":
+        from backend.services.facility_crawler_service import FacilityCrawlerService
+        return FacilityCrawlerService
+    elif name == "ImagePipelineService":
+        from backend.services.image_pipeline_service import ImagePipelineService
+        return ImagePipelineService
+    elif name == "DiscoveryScheduler":
+        from backend.services.discovery_scheduler import DiscoveryScheduler
+        return DiscoveryScheduler
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

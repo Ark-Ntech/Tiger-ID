@@ -55,11 +55,9 @@ setup\windows\START_SERVERS.bat  # Quick restart
 
 ## 📚 Documentation
 
-### Modal Integration (NEW!)
-- **Setup Complete:** `SETUP_COMPLETE.md` - Modal deployment status
-- **Setup Guide:** `MODAL_SETUP_GUIDE.md` - How to use Modal
-- **Environment Config:** `MODAL_ENV_CONFIG.md` - Configuration reference
-- **Startup Scripts:** `STARTUP_SCRIPTS.md` - All startup options
+### Modal Integration
+- **Modal Guide:** `docs/MODAL.md` - Complete Modal documentation
+- **Troubleshooting:** `docs/TROUBLESHOOTING.md` - Common issues and solutions
 
 ### Application Documentation
 - **Complete Setup Guide:** `setup/docs/SETUP_GUIDE.md`

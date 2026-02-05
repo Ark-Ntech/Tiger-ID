@@ -1,14 +1,10 @@
 # Core Application
 fastapi>=0.115.0
 uvicorn>=0.32.0
-celery>=5.4.0
-redis>=5.2.0
 
-# Database & ORM
-psycopg2-binary>=2.9.9
+# Database & ORM (SQLite only)
 sqlalchemy>=2.0.36
-alembic>=1.13.3
-pgvector>=0.3.7
+sqlite-vec>=0.1.6  # SQLite vector search extension
 
 # ML/CV Models
 # Note: torch/torchvision versions may conflict with model packages (omnivinci requires 2.3.0)
@@ -22,6 +18,7 @@ transformers>=4.46.0
 numpy>=1.26.0,<2.0.0
 scipy>=1.14.0
 scikit-learn>=1.6.0
+scikit-image>=0.26.0  # Image quality analysis in image_analysis_server
 Pillow>=11.0.0
 opencv-python>=4.10.0
 imageio>=2.35.0
@@ -30,9 +27,11 @@ imageio>=2.35.0
 mcp>=0.9.0
 markitdown>=0.0.1a2  # Document processing for evidence upload
 firecrawl-py>=0.0.16
+playwright>=1.58.0  # Browser automation for puppeteer MCP server
 
 # Web Search (Free, no API key required)
 ddgs>=9.0.0
+duckduckgo-search>=8.1.0  # Alternative import style used in deep_research_server
 
 # Modal for Serverless GPU Compute
 modal>=1.2.0
@@ -94,3 +93,6 @@ geopy>=2.3.0
 # WebSocket Support (added for React frontend)
 python-socketio>=5.11.0
 aiohttp>=3.10.0
+
+# Scheduling (for continuous tiger discovery)
+APScheduler>=3.10.0

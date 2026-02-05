@@ -160,10 +160,68 @@ The Meta Graph API is exposed via MCP tools accessible through the orchestrator:
 - Rotate credentials periodically
 - Monitor API usage for suspicious activity
 
+### Per-Domain Rate Limiting
+
+Tiger ID implements a sophisticated per-domain rate limiter in `facility_crawler_service.py`:
+
+```python
+from backend.services.facility_crawler_service import RateLimiter
+
+rate_limiter = RateLimiter(
+    requests_per_second=0.5,  # 2-second base interval
+    max_backoff=60.0          # Maximum 60-second wait
+)
+
+# Before each request
+await rate_limiter.wait_for_slot(url)
+
+# After request completes
+if response.status == 200:
+    rate_limiter.report_success(url)
+else:
+    rate_limiter.report_error(url, response.status)
+```
+
+**Key Features:**
+- Per-domain tracking (different sites have different rate limits)
+- Automatic domain extraction from URLs
+- Thread-safe for async operations
+
+### Exponential Backoff Strategy
+
+The rate limiter implements exponential backoff with gradual recovery:
+
+| Event | Backoff Change | Rationale |
+|-------|----------------|-----------|
+| Success | × 0.9 | Gradually return to normal |
+| HTTP 429 | × 2.0 | Rate limited, back off |
+| HTTP 503 | × 2.0 | Service unavailable |
+| HTTP 520-524 | × 2.0 | Cloudflare errors |
+| HTTP 5xx | × 1.5 | Server errors (less aggressive) |
+
+**Backoff Bounds:**
+- Minimum: 1.0 (no backoff = base interval)
+- Maximum: Capped so total wait ≤ `max_backoff`
+
+### Monitoring Backoff State
+
+```python
+stats = rate_limiter.get_stats()
+# Returns:
+# {
+#     "domains_tracked": 15,
+#     "total_requests": 142,
+#     "domains_with_backoff": {
+#         "example.com": 4.0,    # 4x backoff = 8 seconds
+#         "slow-site.org": 16.0  # 16x backoff = 32 seconds
+#     }
+# }
+```
+
 ### Rate Limiting
-- Implement client-side rate limiting
+- Implement client-side rate limiting (built into discovery system)
 - Respect API quotas and limits
-- Implement exponential backoff for retries
+- Implement exponential backoff for retries (automatic in RateLimiter)
 - Monitor usage and set up alerts for quota limits
 
 ### Error Handling

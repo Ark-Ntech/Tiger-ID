@@ -2,21 +2,20 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (no PostgreSQL client needed for SQLite)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    postgresql-client \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements.txt requirements-dev.txt ./
+COPY requirements.txt ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create directories for models and storage
+# Create directories for data (SQLite database, models, storage)
 RUN mkdir -p /app/data/models /app/data/storage && \
     chmod -R 755 /app/data
 
@@ -24,7 +23,7 @@ RUN mkdir -p /app/data/models /app/data/storage && \
 COPY . .
 
 # Copy entrypoint script
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint-sqlite.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Expose port
@@ -35,4 +34,3 @@ ENTRYPOINT ["/entrypoint.sh"]
 
 # Run application
 CMD ["uvicorn", "backend.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
-

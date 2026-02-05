@@ -14,6 +14,7 @@ from backend.utils.logging import get_logger
 from backend.config.settings import get_settings
 from backend.services.model_inference_logger import get_inference_logger
 from backend.services.model_cache_service import get_cache_service
+from backend.services.tiger.model_loader import get_model_loader
 
 logger = get_logger(__name__)
 
@@ -26,14 +27,14 @@ class TigerService:
         self.settings = get_settings()
         self.detection_model = TigerDetectionModel()
         self.reid_model = TigerReIDModel()
-        # Initialize models asynchronously when needed
-        self._available_models = {}
-        self._initialize_available_models()
-        
+
+        # Use centralized ModelLoader for model management
+        self._model_loader = get_model_loader()
+
         # Initialize services
         self.inference_logger = get_inference_logger()
         self.cache_service = get_cache_service()
-        
+
         # Auto-investigation settings
         auto_investigation = getattr(self.settings, 'auto_investigation', None)
         if auto_investigation and hasattr(auto_investigation, 'enabled'):
@@ -41,50 +42,23 @@ class TigerService:
         else:
             self.auto_investigation_enabled = False
     
-    def _initialize_available_models(self):
-        """Initialize available RE-ID models (all run on Modal)"""
-        self._available_models = {
-            'tiger_reid': TigerReIDModel
-        }
-        
-        # All models now use Modal backend - import them all
-        try:
-            from backend.models.wildlife_tools import WildlifeToolsReIDModel
-            self._available_models['wildlife_tools'] = WildlifeToolsReIDModel
-            logger.info("WildlifeTools model available (Modal)")
-        except ImportError as e:
-            logger.debug(f"WildlifeToolsReIDModel not available: {e}")
-        
-        try:
-            from backend.models.cvwc2019_reid import CVWC2019ReIDModel
-            self._available_models['cvwc2019'] = CVWC2019ReIDModel
-            logger.info("CVWC2019 model available (Modal)")
-        except ImportError as e:
-            logger.debug(f"CVWC2019ReIDModel not available: {e}")
-        
-        try:
-            from backend.models.rapid_reid import RAPIDReIDModel
-            self._available_models['rapid'] = RAPIDReIDModel
-            logger.info("RAPID model available (Modal)")
-        except ImportError as e:
-            logger.debug(f"RAPIDReIDModel not available: {e}")
-        
-        logger.info(f"Initialized {len(self._available_models)} Modal-powered models: {list(self._available_models.keys())}")
-    
     def get_available_models(self) -> List[str]:
         """Get list of available model names"""
-        return list(self._available_models.keys())
-    
+        return self._model_loader.get_available_model_names()
+
     def _get_model(self, model_name: Optional[str] = None):
-        """Get model instance by name"""
-        if model_name is None:
-            model_name = 'wildlife_tools'  # Default model (better than generic ResNet50)
-        
-        if model_name not in self._available_models:
-            raise ValueError(f"Model '{model_name}' not available. Available: {self.get_available_models()}")
-        
-        model_class = self._available_models[model_name]
-        return model_class()
+        """Get model instance by name.
+
+        Args:
+            model_name: Name of model to get (uses default 'wildlife_tools' if None)
+
+        Returns:
+            Model instance
+
+        Raises:
+            ValueError: If model is not available
+        """
+        return self._model_loader.get_model(model_name)
     
     async def identify_tiger_from_image(
         self,

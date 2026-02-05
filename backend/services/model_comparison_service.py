@@ -2,6 +2,7 @@
 Model comparison service for RE-ID models.
 
 Runs multiple models on same query images, compares results, and selects best model.
+Supports weighted ensemble scoring and optional k-reciprocal re-ranking.
 """
 
 import sys
@@ -16,18 +17,56 @@ from backend.utils.logging import get_logger
 from backend.utils.device import get_device
 from backend.config.settings import get_settings
 from backend.services.model_evaluation_service import ModelEvaluationService
+from backend.services.confidence_calibrator import ConfidenceCalibrator, DEFAULT_MODEL_WEIGHTS
+from backend.services.reranking_service import RerankingService
 
 logger = get_logger(__name__)
 
+# Model weights based on expected accuracy (P1 improvement)
+# These weights are used for weighted ensemble scoring
+MODEL_WEIGHTS = {
+    "wildlife_tools": 0.40,   # Best individual performer (MegaDescriptor-L-384, 1536-dim)
+    "cvwc2019_reid": 0.30,    # Part-based features with ResNet152 (2048-dim)
+    "transreid": 0.20,        # Vision Transformer features (768-dim)
+    "tiger_reid": 0.10,       # Baseline ResNet50 (2048-dim)
+    "rapid_reid": 0.05,       # Edge-optimized (lower accuracy)
+}
+
 
 class ModelComparisonService:
-    """Service for comparing multiple RE-ID models"""
-    
-    def __init__(self):
-        """Initialize comparison service"""
+    """Service for comparing multiple RE-ID models with weighted ensemble support"""
+
+    def __init__(
+        self,
+        use_reranking: bool = True,
+        use_calibration: bool = True,
+        model_weights: Optional[Dict[str, float]] = None
+    ):
+        """
+        Initialize comparison service.
+
+        Args:
+            use_reranking: Whether to apply k-reciprocal re-ranking (P1 improvement)
+            use_calibration: Whether to apply confidence calibration (P2 improvement)
+            model_weights: Custom model weights for ensemble. If None, uses defaults.
+        """
         self.settings = get_settings()
         self.logger = logger
         self.evaluation_service = ModelEvaluationService()
+
+        # Initialize confidence calibrator
+        self.calibrator = ConfidenceCalibrator(
+            weights=model_weights or MODEL_WEIGHTS
+        )
+
+        # Initialize re-ranking service
+        self.reranking_service = RerankingService(
+            k1=20, k2=6, lambda_value=0.3
+        ) if use_reranking else None
+
+        self.use_reranking = use_reranking
+        self.use_calibration = use_calibration
+        self.model_weights = model_weights or MODEL_WEIGHTS
     
     async def compare_models(
         self,
@@ -184,77 +223,101 @@ class ModelComparisonService:
         device: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Generate ensemble predictions from multiple models
-        
+        Generate ensemble predictions from multiple models using weighted averaging.
+
+        Implements P1 improvements:
+        - Weighted ensemble scoring based on model accuracy
+        - Optional confidence calibration
+        - Optional k-reciprocal re-ranking
+
         Args:
             models: Dictionary mapping model names to model instances
             query_images: List of query images
             gallery_images: List of gallery images
             device: Device to use
-            
+
         Returns:
             Ensemble prediction results
         """
-        logger.info("Generating ensemble predictions...")
-        
+        logger.info("Generating weighted ensemble predictions...")
+        logger.info(f"Using calibration: {self.use_calibration}, re-ranking: {self.use_reranking}")
+
         ensemble_results = {
-            'method': 'weighted_average',
+            'method': 'weighted_ensemble',
+            'weights': self.model_weights,
+            'use_calibration': self.use_calibration,
+            'use_reranking': self.use_reranking,
             'query_results': [],
             'metrics': {}
         }
-        
+
         # Get individual model predictions
         model_predictions = {}
-        
+        model_embeddings = {}  # Store embeddings for re-ranking
+
         for model_name, model in models.items():
             try:
                 result = await self.evaluation_service.evaluate_model(
                     model, model_name, query_images, gallery_images, device
                 )
                 model_predictions[model_name] = result.get('query_results', [])
+
+                # Store embeddings if available (for re-ranking)
+                if 'query_embeddings' in result:
+                    model_embeddings[model_name] = {
+                        'query': result['query_embeddings'],
+                        'gallery': result.get('gallery_embeddings', [])
+                    }
             except Exception as e:
                 logger.warning(f"Error getting predictions from {model_name}: {e}")
                 continue
-        
+
         if not model_predictions:
             return None
-        
+
+        # Get total weight for normalization
+        active_models = [m for m in model_predictions.keys() if m in self.model_weights]
+        total_weight = sum(self.model_weights.get(m, 0.1) for m in active_models)
+
         # Combine predictions for each query
         num_queries = len(query_images)
         for query_idx in range(num_queries):
             query_img = query_images[query_idx]
             query_id = query_img['tiger_id']
-            
-            # Collect matches from all models
-            all_matches = {}
-            
+
+            # Collect matches from all models with weights
+            all_matches: Dict[str, float] = {}
+
             for model_name, predictions in model_predictions.items():
                 if query_idx < len(predictions):
                     query_result = predictions[query_idx]
                     matches = query_result.get('matches', [])
-                    
-                    # Weight matches by model's rank1 accuracy (if available)
-                    # For now, use equal weights
-                    weight = 1.0 / len(model_predictions)
-                    
+
+                    # Get model weight (P1 improvement: weighted ensemble)
+                    weight = self.model_weights.get(model_name, 0.1) / total_weight
+
                     for tiger_id, similarity in matches:
+                        # Optionally calibrate similarity (P2 improvement)
+                        if self.use_calibration:
+                            similarity = self.calibrator.calibrate(similarity, model_name)
+
                         if tiger_id not in all_matches:
                             all_matches[tiger_id] = 0.0
                         all_matches[tiger_id] += similarity * weight
-            
+
             # Sort by combined similarity
             combined_matches = sorted(
                 all_matches.items(),
                 key=lambda x: x[1],
                 reverse=True
             )
-            
+
             ensemble_results['query_results'].append({
                 'query_id': query_id,
                 'query_path': str(query_img['path']),
                 'matches': [(tid, float(sim)) for tid, sim in combined_matches]
             })
-        
+
         # Compute ensemble metrics
         ensemble_results['metrics'] = {
             'rank1_accuracy': self.evaluation_service.compute_rank_k_accuracy(
@@ -265,13 +328,31 @@ class ModelComparisonService:
             ),
             'map': self.evaluation_service.compute_map(ensemble_results['query_results'])
         }
-        
+
         logger.info(
-            f"✓ Ensemble: Rank-1: {ensemble_results['metrics']['rank1_accuracy']:.3f}, "
+            f"✓ Weighted Ensemble: Rank-1: {ensemble_results['metrics']['rank1_accuracy']:.3f}, "
             f"mAP: {ensemble_results['metrics']['map']:.3f}"
         )
-        
+
         return ensemble_results
+
+    def set_model_weight(self, model_name: str, weight: float) -> None:
+        """
+        Set ensemble weight for a model.
+
+        Args:
+            model_name: Model identifier
+            weight: Weight value (non-negative)
+        """
+        if weight < 0:
+            raise ValueError(f"Weight must be non-negative, got {weight}")
+        self.model_weights[model_name] = weight
+        self.calibrator.set_weight(model_name, weight)
+        logger.info(f"Set weight for {model_name}: {weight}")
+
+    def get_model_weights(self) -> Dict[str, float]:
+        """Get current model weights."""
+        return self.model_weights.copy()
     
     async def select_model_for_scenario(
         self,

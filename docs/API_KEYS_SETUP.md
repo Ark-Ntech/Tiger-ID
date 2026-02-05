@@ -77,27 +77,7 @@ META_ENABLED=true
 
 **Note:** Requires Facebook Developer account and app approval for production use
 
-### 4. OmniVinci API (Optional - NVIDIA)
-
-**Purpose:** Advanced AI model for multimodal analysis
-
-**How to Get:**
-1. Visit: https://www.nvidia.com/en-us/ai-data-science/products/omnivinci/
-2. Sign up for NVIDIA API access
-3. Get API key from dashboard
-
-**Configuration:**
-```env
-OMNIVINCI_API_KEY=your_api_key_here
-```
-
-**Alternative:** Use local model (requires GPU)
-```env
-OMNIVINCI_USE_LOCAL=true
-OMNIVINCI_MODEL_PATH=./data/models/omnivinci/omnivinci
-```
-
-### 5. Government APIs (Optional)
+### 4. Government APIs (Optional)
 
 #### USDA API
 **Purpose:** Facility data synchronization
@@ -147,7 +127,6 @@ USFWS_ENABLED=true
 2. **YouTube API** - Useful for video monitoring
 3. **Meta API** - Useful for social media monitoring
 4. **Government APIs** - Optional, for data synchronization
-5. **OmniVinci API** - Optional, for advanced AI features
 
 ## Testing API Keys
 
@@ -166,6 +145,26 @@ After adding API keys to your `.env` file:
 - Use environment-specific keys (dev/staging/prod)
 - Monitor API usage to avoid unexpected charges
 
+## Rate Limit Quota Guidance
+
+The Tiger ID discovery system includes built-in rate limiting to help stay within API quotas:
+
+### Automatic Rate Limiting
+
+The `RateLimiter` class (`facility_crawler_service.py`) provides:
+- Per-domain request tracking
+- Exponential backoff on rate limit errors (HTTP 429)
+- Gradual recovery on successful requests
+- 2-second base interval, 60-second maximum backoff
+
+### Recommended Quotas by Provider
+
+| Provider | Free Tier | Recommended for Production |
+|----------|-----------|---------------------------|
+| DuckDuckGo | Unlimited (no key) | Unlimited |
+| YouTube Data API | 10,000 units/day | Request quota increase if needed |
+| Meta Graph API | Varies | Request rate limit increase |
+
 ## Troubleshooting
 
 ### "API key invalid" errors
@@ -176,7 +175,7 @@ After adding API keys to your `.env` file:
 ### "Quota exceeded" errors
 - Check usage limits in provider dashboard
 - Upgrade plan if needed
-- Implement rate limiting
+- The discovery system implements automatic backoff on 429 errors
 
 ### "Permission denied" errors
 - Verify API permissions/scopes are correct

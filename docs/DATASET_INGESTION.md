@@ -42,14 +42,12 @@ INGEST_DATASETS_ON_STARTUP=true
 
 This runs in the background and doesn't block application startup.
 
-### Scheduled (Celery Beat)
+### Background Ingestion
 
-Dataset ingestion runs automatically via Celery Beat:
-- **Schedule**: Daily at 3 AM UTC
+Dataset ingestion can run in the background via threading:
+- **Trigger**: Startup (if `INGEST_DATASETS_ON_STARTUP=true`)
 - **Behavior**: Only ingests new images (skips existing)
-- **Task**: `ingest_datasets`
-
-To disable scheduled ingestion, remove or comment out the task in `backend/jobs/data_sync_jobs.py`.
+- **Non-blocking**: Runs in a daemon thread
 
 ## Manual Ingestion
 
@@ -79,16 +77,15 @@ python scripts/init_db.py --ingest-datasets
 python scripts/init_db.py --ingest-datasets --ingest-datasets-dry-run
 ```
 
-### Using Celery Task
+### Using Python API
 
 ```python
-from backend.jobs.data_sync_jobs import ingest_datasets_task
+from backend.services.dataset_ingestion_service import DatasetIngestionService
+from backend.database import get_db_session
 
-# Queue ingestion task
-result = ingest_datasets_task.delay(
-    dataset='all',
-    skip_existing=True
-)
+with get_db_session() as session:
+    service = DatasetIngestionService(session)
+    result = service.ingest_dataset('atrw', skip_existing=True)
 ```
 
 ## What Gets Created
@@ -203,7 +200,7 @@ with get_db_session() as session:
 ## Best Practices
 
 1. **Initial Setup**: Run ingestion after downloading datasets
-2. **Production**: Use scheduled Celery task for regular updates
+2. **Production**: Enable `INGEST_DATASETS_ON_STARTUP=true` for automatic updates
 3. **Development**: Use `--dry-run` to test without changes
 4. **Verification**: Always verify ingested images before use
 5. **Embeddings**: Generate embeddings after ingestion for best performance

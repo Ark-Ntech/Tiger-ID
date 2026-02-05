@@ -1,12 +1,5 @@
 import React from 'react';
-
-interface Citation {
-  title: string;
-  uri: string;
-  snippet: string;
-  relevance_score?: number;
-  location_mentions?: string[];
-}
+import type { Citation } from '../../types/investigation2';
 
 interface Investigation2CitationsProps {
   citations: Citation[];

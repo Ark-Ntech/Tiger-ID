@@ -56,8 +56,10 @@ class TemplateService:
     
     def get_template(self, template_id: UUID) -> Optional[InvestigationTemplate]:
         """Get template by ID"""
+        # Convert UUID to string for comparison (template_id is stored as String(36))
+        template_id_str = str(template_id)
         return self.session.query(InvestigationTemplate).filter(
-            InvestigationTemplate.template_id == template_id
+            InvestigationTemplate.template_id == template_id_str
         ).first()
     
     def get_templates(

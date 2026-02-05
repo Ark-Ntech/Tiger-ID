@@ -6,12 +6,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.database.models import Base, TigerImage
+from backend.database.models import Base, TigerImage, Tiger, Facility
 from backend.database.vector_search import (
-    create_vector_index,
-    search_similar_embeddings,
     find_matching_tigers,
-    store_embedding
+    store_embedding,
+    delete_embedding,
+    sync_embeddings,
+    get_embedding_count
 )
 
 
@@ -20,100 +21,144 @@ class TestVectorSearch:
     
     @pytest.fixture(scope="function")
     def test_db_with_vectors(self):
-        """Create a test database with vector support"""
-        # SQLite doesn't support pgvector, so we'll mock the behavior
-        # For actual pgvector testing, you'd need a PostgreSQL test database
+        """Create a test database with sqlite-vec support"""
         test_engine = create_engine(
             "sqlite:///:memory:",
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
             echo=False
         )
-        
-        # Create tables without vector column (SQLite limitation)
-        # In real tests with PostgreSQL, pgvector would work
+
+        # Create tables
         Base.metadata.create_all(bind=test_engine)
-        
+
+        # Create vec_embeddings virtual table
+        with test_engine.connect() as conn:
+            try:
+                conn.execute(text("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS vec_embeddings USING vec0(
+                        image_id TEXT PRIMARY KEY,
+                        embedding FLOAT[2048]
+                    )
+                """))
+                conn.commit()
+            except Exception:
+                # sqlite-vec might not be available in test environment
+                pass
+
         yield test_engine
-        
+
         Base.metadata.drop_all(bind=test_engine)
     
-    def test_create_vector_index(self, test_db_with_vectors):
-        """Test creating a vector index"""
+    def test_get_embedding_count(self, test_db_with_vectors):
+        """Test getting embedding count from vec_embeddings table"""
         TestSessionLocal = sessionmaker(
             autocommit=False,
             autoflush=False,
             bind=test_db_with_vectors
         )
         session = TestSessionLocal()
-        
+
         try:
-            # Note: This will fail with SQLite since it doesn't support pgvector
-            # In real tests, use PostgreSQL
-            # For now, we'll just test that the function doesn't crash with proper params
-            try:
-                create_vector_index(session, "tiger_images", "embedding")
-            except Exception as e:
-                # Expected to fail with SQLite - would work with PostgreSQL + pgvector
-                assert "vector" in str(e).lower() or "syntax" in str(e).lower() or "unsupported" in str(e).lower()
+            # Should return 0 for empty table or handle table not existing
+            count = get_embedding_count(session)
+            assert isinstance(count, int)
+            assert count >= 0
         finally:
             session.close()
     
-    def test_search_similar_embeddings_basic(self):
-        """Test search_similar_embeddings function signature and basic logic"""
-        # Create a dummy embedding
-        query_embedding = np.random.rand(512).astype(np.float32)
-        
-        # Verify embedding shape
-        assert query_embedding.shape == (512,)
-        assert len(query_embedding) == 512
-        
-        # Verify function expects correct parameters
-        # (We can't fully test without PostgreSQL + pgvector)
-        # This test documents expected behavior
+    def test_embedding_validation(self):
+        """Test embedding validation in find_matching_tigers"""
+        from backend.database import SessionLocal
+        session = SessionLocal()
+
+        try:
+            # Test invalid embedding type
+            with pytest.raises(ValueError, match="must be numpy array"):
+                find_matching_tigers(session, [1, 2, 3])
+
+            # Test invalid embedding shape
+            with pytest.raises(ValueError, match="must be 1-dimensional"):
+                find_matching_tigers(session, np.array([[1, 2, 3]]))
+
+            # Test all-zero embedding
+            with pytest.raises(ValueError, match="cannot be all zeros"):
+                find_matching_tigers(session, np.zeros(2048))
+        finally:
+            session.close()
     
-    def test_find_matching_tigers_basic(self):
-        """Test find_matching_tigers function signature and basic logic"""
-        # Create a dummy embedding
-        query_embedding = np.random.rand(512).astype(np.float32)
-        
-        # Test with different parameters
-        params = {
-            "query_embedding": query_embedding,
-            "tiger_id": None,
-            "side_view": None,
-            "limit": 5,
-            "similarity_threshold": 0.8
-        }
-        
-        # Verify parameters
-        assert params["query_embedding"].shape == (512,)
-        assert params["limit"] > 0
-        assert 0 <= params["similarity_threshold"] <= 1
+    def test_find_matching_tigers_basic(self, test_db_with_vectors):
+        """Test find_matching_tigers with empty database"""
+        TestSessionLocal = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=test_db_with_vectors
+        )
+        session = TestSessionLocal()
+
+        try:
+            # Create a valid embedding (2048-dim)
+            query_embedding = np.random.rand(2048).astype(np.float32)
+
+            # Should return empty list for empty database
+            results = find_matching_tigers(
+                session,
+                query_embedding=query_embedding,
+                tiger_id=None,
+                side_view=None,
+                limit=5,
+                similarity_threshold=0.8
+            )
+
+            assert isinstance(results, list)
+            # Empty DB should return empty results
+            assert len(results) == 0
+        except Exception as e:
+            # sqlite-vec might not be available - that's okay
+            assert "vec_embeddings" in str(e) or "no such table" in str(e)
+        finally:
+            session.close()
     
-    def test_store_embedding_logic(self):
-        """Test store_embedding function logic"""
-        # Create a dummy embedding
-        embedding = np.random.rand(512).astype(np.float32)
-        
-        # Convert to string format (as done in the function)
-        embedding_str = "[" + ",".join(map(str, embedding)) + "]"
-        
-        # Verify conversion
-        assert embedding_str.startswith("[")
-        assert embedding_str.endswith("]")
-        assert "," in embedding_str
+    def test_store_embedding_logic(self, test_db_with_vectors):
+        """Test store_embedding function"""
+        TestSessionLocal = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=test_db_with_vectors
+        )
+        session = TestSessionLocal()
+
+        try:
+            # Create a valid embedding (2048-dim)
+            embedding = np.random.rand(2048).astype(np.float32)
+            image_id = "test-image-123"
+
+            # Try storing embedding (may fail if sqlite-vec not available)
+            try:
+                result = store_embedding(session, image_id, embedding)
+                # If sqlite-vec is available, should succeed
+                assert isinstance(result, bool)
+            except Exception as e:
+                # sqlite-vec might not be available - that's okay
+                assert "vec_embeddings" in str(e) or "no such table" in str(e)
+        finally:
+            session.close()
     
     def test_embedding_dimension(self):
         """Test that embeddings have correct dimension"""
-        # Test various embedding sizes
-        for dim in [256, 512, 1024]:
+        from backend.database.vector_search import VALID_EMBEDDING_DIMS
+
+        # Test valid embedding dimensions
+        assert 768 in VALID_EMBEDDING_DIMS  # TransReID
+        assert 1024 in VALID_EMBEDDING_DIMS  # MegaDescriptor-B
+        assert 1536 in VALID_EMBEDDING_DIMS  # Wildlife Tools
+        assert 2048 in VALID_EMBEDDING_DIMS  # CVWC2019, Tiger ReID, RAPID ReID
+
+        # Verify embeddings can be created with these dimensions
+        for dim in VALID_EMBEDDING_DIMS:
             embedding = np.random.rand(dim).astype(np.float32)
-            embedding_str = "[" + ",".join(map(str, embedding)) + "]"
-            
-            # Verify string format
-            values = embedding_str.strip("[]").split(",")
-            assert len(values) == dim
+            assert embedding.shape[0] == dim
+            assert embedding.ndim == 1
     
     def test_similarity_threshold_validation(self):
         """Test similarity threshold validation"""

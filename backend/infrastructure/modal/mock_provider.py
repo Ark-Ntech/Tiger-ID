@@ -35,7 +35,7 @@ class MockResponseProvider:
         }
 
     @staticmethod
-    def wildlife_tools_embedding(embedding_dim: int = 2048) -> Dict[str, Any]:
+    def wildlife_tools_embedding(embedding_dim: int = 1536) -> Dict[str, Any]:
         """Generate mock WildlifeTools embedding.
 
         Args:
@@ -71,7 +71,7 @@ class MockResponseProvider:
         }
 
     @staticmethod
-    def cvwc2019_embedding(embedding_dim: int = 3072) -> Dict[str, Any]:
+    def cvwc2019_embedding(embedding_dim: int = 2048) -> Dict[str, Any]:
         """Generate mock CVWC2019 embedding.
 
         Args:
@@ -123,41 +123,68 @@ class MockResponseProvider:
         }
 
     @staticmethod
-    def omnivinci_image_analysis() -> Dict[str, Any]:
-        """Generate mock OmniVinci image analysis.
+    def transreid_embedding() -> Dict[str, Any]:
+        """Generate mock TransReID embedding.
 
         Returns:
-            Mock visual analysis response
+            Mock embedding response with 768-dim vector (ViT-Base)
         """
-        logger.info("[MOCK] Generating OmniVinci image analysis")
+        import numpy as np
+        logger.info("[MOCK] Generating TransReID embedding")
         return {
             "success": True,
-            "analysis": (
-                "Mock visual analysis: Tiger appears to be an adult "
-                "Amur tiger in a natural setting. Stripe patterns are "
-                "clearly visible along the flanks. The tiger's posture "
-                "suggests alertness. Image quality is suitable for "
-                "identification purposes."
-            ),
+            "embedding": np.random.rand(768).tolist(),
+            "shape": (768,),
+            "model_info": {
+                "architecture": "TransReID",
+                "backbone": "ViT-Base-Patch16-224",
+                "output_dim": 768
+            },
             "mock": True
         }
 
     @staticmethod
-    def omnivinci_video_analysis() -> Dict[str, Any]:
-        """Generate mock OmniVinci video analysis.
+    def megadescriptor_b_embedding(embedding_dim: int = 1024) -> Dict[str, Any]:
+        """Generate mock MegaDescriptor-B embedding.
+
+        Args:
+            embedding_dim: Dimension of embedding vector
 
         Returns:
-            Mock video analysis response
+            Mock embedding response with 1024-dim vector (Swin-Base)
         """
-        logger.info("[MOCK] Generating OmniVinci video analysis")
+        logger.info(f"[MOCK] Generating MegaDescriptor-B embedding ({embedding_dim}d)")
         return {
             "success": True,
-            "analysis": (
-                "Mock video analysis: Video shows a tiger moving through "
-                "dense vegetation. Multiple stripe patterns captured from "
-                "different angles. Behavior appears natural and undisturbed."
-            ),
-            "frames_analyzed": 30,
+            "embedding": np.random.rand(embedding_dim).tolist(),
+            "shape": (embedding_dim,),
+            "mock": True
+        }
+
+    @staticmethod
+    def matchanything_match(num_matches: int = None) -> Dict[str, Any]:
+        """Generate mock MatchAnything matching result.
+
+        Args:
+            num_matches: Number of matches to simulate (random if None)
+
+        Returns:
+            Mock matching response
+        """
+        if num_matches is None:
+            # Random number between 50-200 matches
+            num_matches = np.random.randint(50, 200)
+
+        scores = np.random.uniform(0.3, 0.9, num_matches)
+
+        logger.info(f"[MOCK] Generating MatchAnything result ({num_matches} matches)")
+        return {
+            "success": True,
+            "num_matches": num_matches,
+            "mean_score": float(scores.mean()) if num_matches > 0 else 0.0,
+            "max_score": float(scores.max()) if num_matches > 0 else 0.0,
+            "min_score": float(scores.min()) if num_matches > 0 else 0.0,
+            "total_score": float(scores.sum()) if num_matches > 0 else 0.0,
             "mock": True
         }
 
@@ -179,9 +206,11 @@ class MockResponseProvider:
         # Default dimensions per model
         default_dims = {
             "tiger_reid": 2048,
-            "wildlife_tools": 2048,
+            "wildlife_tools": 1536,
+            "megadescriptor_b": 1024,
             "rapid_reid": 2048,
-            "cvwc2019_reid": 3072,
+            "cvwc2019_reid": 2048,
+            "transreid": 768,
         }
 
         dim = embedding_dim or default_dims.get(model_name, 2048)

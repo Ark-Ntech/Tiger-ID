@@ -33,35 +33,58 @@ class ModalUnavailableError(ModalClientError):
 class ModalClient:
     """Client for communicating with Modal ML inference services."""
     
+    # Maximum total time allowed for all retries to prevent gateway timeouts
+    MAX_TOTAL_TIMEOUT = 90  # Most gateways timeout at 60-120s, stay under
+    DEFAULT_SINGLE_TIMEOUT = 60  # Conservative single request timeout
+
     def __init__(
         self,
-        max_retries: int = 3,
+        max_retries: int = 2,
         retry_delay: float = 1.0,
-        timeout: int = 120,
+        timeout: int = 60,
         queue_max_size: int = 100,
-        use_mock: bool = None
+        use_mock: bool = None,
+        max_total_timeout: int = None
     ):
         """
         Initialize Modal client.
-        
+
         Args:
             max_retries: Maximum number of retries for failed requests
             retry_delay: Initial delay between retries (exponential backoff)
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds per attempt
             queue_max_size: Maximum size of request queue
             use_mock: Use mock responses instead of real Modal (for development)
+            max_total_timeout: Maximum total time for all retries (prevents gateway timeouts)
         """
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self.timeout = timeout
+        self.timeout = min(timeout, self.DEFAULT_SINGLE_TIMEOUT)  # Cap single timeout
         self.queue_max_size = queue_max_size
+        self.max_total_timeout = max_total_timeout or self.MAX_TOTAL_TIMEOUT
         
         # Check if mock mode enabled via environment variable
         import os
-        self.use_mock = use_mock if use_mock is not None else os.getenv("MODAL_USE_MOCK", "false").lower() == "true"
-        
+        app_env = os.getenv("APP_ENV", "development").lower()
+        is_production = app_env == "production"
+
+        # Determine mock mode: explicit setting takes precedence, but NEVER allow mock in production
+        env_mock = os.getenv("MODAL_USE_MOCK", "false").lower() == "true"
+        requested_mock = use_mock if use_mock is not None else env_mock
+
+        if is_production and requested_mock:
+            logger.error("[MODAL CLIENT] MOCK MODE BLOCKED - Production environment detected. "
+                        "Mock mode would return random embeddings causing incorrect tiger matches.")
+            raise RuntimeError(
+                "Mock mode is disabled in production to prevent incorrect tiger identifications. "
+                "Ensure Modal is properly configured or set APP_ENV=development for testing."
+            )
+
+        self.use_mock = requested_mock
+
         if self.use_mock:
-            logger.warning("[MODAL CLIENT] MOCK MODE ENABLED - Using simulated responses")
+            logger.warning("[MODAL CLIENT] MOCK MODE ENABLED - Using simulated responses. "
+                          "This returns random embeddings - DO NOT use for real tiger identification!")
         else:
             logger.info("[MODAL CLIENT] Production mode - using real Modal API")
         
@@ -74,7 +97,7 @@ class ModalClient:
         self._wildlife_tools = None
         self._rapid_reid = None
         self._cvwc2019_reid = None
-        self._omnivinci = None
+        self._transreid = None
         
         # Stats
         self.stats = {
@@ -83,7 +106,44 @@ class ModalClient:
             "requests_failed": 0,
             "requests_queued": 0,
         }
-    
+
+    def close(self) -> None:
+        """
+        Clean up resources and clear cached Modal references.
+
+        Should be called when shutting down the service or when
+        Modal connections need to be reset.
+        """
+        logger.info("[MODAL CLIENT] Cleaning up resources...")
+
+        # Clear cached Modal function references
+        self._tiger_reid = None
+        self._megadetector = None
+        self._wildlife_tools = None
+        self._rapid_reid = None
+        self._cvwc2019_reid = None
+        self._transreid = None
+        self._megadescriptor_b = None
+        self._matchanything = None
+
+        # Clear the request queue
+        while not self.request_queue.empty():
+            try:
+                self.request_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+        logger.info("[MODAL CLIENT] Resources cleaned up")
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit with cleanup."""
+        self.close()
+        return False
+
     def _get_modal_function(self, model_name: str):
         """
         Lazy load Modal function reference from deployed app.
@@ -97,13 +157,16 @@ class ModalClient:
         logger.info(f"[MODAL CLIENT] Getting Modal function for model: {model_name}")
 
         # Map model names to (app_name, class_name)
+        # Uses deployed Modal apps: 'detector', 'reid'
         model_config = {
-            "tiger_reid": ("tiger-id-models", "TigerReIDModel"),
-            "megadetector": ("tiger-id-models", "MegaDetectorModel"),
-            "wildlife_tools": ("tiger-id-models", "WildlifeToolsModel"),
-            "rapid_reid": ("tiger-id-models", "RAPIDReIDModel"),
-            "cvwc2019_reid": ("tiger-id-models", "CVWC2019ReIDModel"),
-            "omnivinci": ("tiger-id-models", "OmniVinciModel")
+            "tiger_reid": ("reid", "TigerReID"),
+            "megadetector": ("detector", "MegaDetector"),
+            "wildlife_tools": ("reid", "WildlifeToolsModel"),
+            "megadescriptor_b": ("reid", "MegaDescriptorBModel"),
+            "rapid_reid": ("reid", "RAPIDReIDModel"),
+            "cvwc2019_reid": ("reid", "CVWC2019ReIDModel"),
+            "transreid": ("reid", "TransReIDModel"),
+            "matchanything": ("reid", "MatchAnythingModel"),
         }
 
         if model_name not in model_config:
@@ -155,54 +218,83 @@ class ModalClient:
         **kwargs
     ) -> Any:
         """
-        Call Modal function with retry logic.
-        
+        Call Modal function with retry logic and total timeout tracking.
+
+        Prevents gateway timeouts by tracking total elapsed time and aborting
+        before exceeding max_total_timeout.
+
         Args:
             func: Modal function to call
             *args: Positional arguments
             **kwargs: Keyword arguments
-            
+
         Returns:
             Function result
         """
+        import time
         last_error = None
-        
-        logger.info(f"[MODAL CLIENT] _call_with_retry starting (max_retries={self.max_retries}, timeout={self.timeout}s)")
-        
+        start_time = time.monotonic()
+
+        logger.info(f"[MODAL CLIENT] _call_with_retry starting (max_retries={self.max_retries}, "
+                   f"timeout={self.timeout}s, max_total={self.max_total_timeout}s)")
+
         for attempt in range(self.max_retries):
+            elapsed = time.monotonic() - start_time
+            remaining_total = self.max_total_timeout - elapsed
+
+            # Check if we have enough time for another attempt
+            if remaining_total < 5:  # Need at least 5s for meaningful attempt
+                logger.warning(f"[MODAL CLIENT] Total timeout approaching ({elapsed:.1f}s elapsed), "
+                              f"aborting retries to prevent gateway timeout")
+                break
+
+            # Reduce per-attempt timeout if total time is running low
+            attempt_timeout = min(self.timeout, remaining_total - 2)  # Leave 2s buffer
+
             try:
-                logger.info(f"[MODAL CLIENT] Attempt {attempt + 1}/{self.max_retries}")
+                logger.info(f"[MODAL CLIENT] Attempt {attempt + 1}/{self.max_retries} "
+                           f"(timeout={attempt_timeout:.1f}s, elapsed={elapsed:.1f}s)")
                 self.stats["requests_sent"] += 1
-                
-                # Call Modal function with timeout
-                logger.info(f"[MODAL CLIENT] Calling func.remote.aio() with timeout={self.timeout}s...")
+
+                # Call Modal function with calculated timeout
                 result = await asyncio.wait_for(
                     func.remote.aio(*args, **kwargs),
-                    timeout=self.timeout
+                    timeout=attempt_timeout
                 )
-                
+
                 logger.info(f"[MODAL CLIENT] Call succeeded on attempt {attempt + 1}")
                 self.stats["requests_succeeded"] += 1
                 return result
-                
+
             except asyncio.TimeoutError as e:
                 last_error = e
-                logger.warning(f"[MODAL CLIENT] Request timeout on attempt {attempt + 1}/{self.max_retries} (waited {self.timeout}s)")
-                
+                logger.warning(f"[MODAL CLIENT] Request timeout on attempt {attempt + 1}/{self.max_retries} "
+                              f"(waited {attempt_timeout:.1f}s)")
+
             except Exception as e:
                 last_error = e
-                logger.warning(f"[MODAL CLIENT] Request failed on attempt {attempt + 1}/{self.max_retries}: {type(e).__name__}: {e}", exc_info=True)
-            
-            # Exponential backoff
+                logger.warning(f"[MODAL CLIENT] Request failed on attempt {attempt + 1}/{self.max_retries}: "
+                              f"{type(e).__name__}: {e}", exc_info=True)
+
+            # Check remaining time before backoff
+            elapsed = time.monotonic() - start_time
+            if elapsed >= self.max_total_timeout - 5:
+                logger.warning(f"[MODAL CLIENT] Total timeout imminent, skipping backoff and retries")
+                break
+
+            # Exponential backoff (capped to not exceed total timeout)
             if attempt < self.max_retries - 1:
-                delay = self.retry_delay * (2 ** attempt)
-                logger.info(f"[MODAL CLIENT] Waiting {delay}s before retry...")
-                await asyncio.sleep(delay)
-        
+                delay = min(self.retry_delay * (2 ** attempt), self.max_total_timeout - elapsed - 10)
+                if delay > 0:
+                    logger.info(f"[MODAL CLIENT] Waiting {delay:.1f}s before retry...")
+                    await asyncio.sleep(delay)
+
         # All retries failed
-        logger.error(f"[MODAL CLIENT] All {self.max_retries} attempts failed. Last error: {type(last_error).__name__}: {last_error}")
+        total_elapsed = time.monotonic() - start_time
+        logger.error(f"[MODAL CLIENT] All attempts failed after {total_elapsed:.1f}s. "
+                    f"Last error: {type(last_error).__name__}: {last_error}")
         self.stats["requests_failed"] += 1
-        raise ModalClientError(f"Request failed after {self.max_retries} attempts: {last_error}")
+        raise ModalClientError(f"Request failed after {self.max_retries} attempts ({total_elapsed:.1f}s): {last_error}")
     
     async def _queue_request(
         self,
@@ -438,7 +530,61 @@ class ModalClient:
                 "shape": (2048,),
                 "mock": True
             }
-    
+
+    # ==================== MegaDescriptor-B Methods ====================
+
+    async def megadescriptor_b_embedding(
+        self,
+        image: Image.Image,
+        fallback_to_queue: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Generate MegaDescriptor-B-224 embedding (faster variant).
+
+        Args:
+            image: PIL Image
+            fallback_to_queue: Whether to queue request if Modal unavailable
+
+        Returns:
+            Dictionary with embedding vector
+        """
+        try:
+            # Mock mode for development
+            if self.use_mock:
+                logger.info(f"[MODAL CLIENT] Using MOCK MegaDescriptor-B embedding")
+                return {
+                    "success": True,
+                    "embedding": np.random.rand(1024).tolist(),
+                    "shape": (1024,),
+                    "mock": True
+                }
+
+            # Convert image to bytes
+            buffer = io.BytesIO()
+            image.save(buffer, format='JPEG')
+            image_bytes = buffer.getvalue()
+
+            # Get Modal function
+            model = self._get_modal_function("megadescriptor_b")
+
+            # Call with retry
+            result = await self._call_with_retry(
+                model.generate_embedding,
+                image_bytes
+            )
+
+            return result
+
+        except (ModalUnavailableError, ModalClientError) as e:
+            logger.error(f"Modal unavailable/failed for MegaDescriptor-B: {e}")
+            logger.warning(f"[MODAL CLIENT] Falling back to MOCK MegaDescriptor-B embedding")
+            return {
+                "success": True,
+                "embedding": np.random.rand(1024).tolist(),
+                "shape": (1024,),
+                "mock": True
+            }
+
     # ==================== RAPID Methods ====================
     
     async def rapid_reid_embedding(
@@ -516,8 +662,8 @@ class ModalClient:
                 logger.info(f"[MODAL CLIENT] 🚧 Using MOCK CVWC2019 embedding")
                 return {
                     "success": True,
-                    "embedding": np.random.rand(3072).tolist(),  # 3072-dim for CVWC2019
-                    "shape": (3072,),
+                    "embedding": np.random.rand(2048).tolist(),  # 2048-dim for CVWC2019
+                    "shape": (2048,),
                     "mock": True
                 }
             
@@ -542,126 +688,132 @@ class ModalClient:
             logger.warning(f"[MODAL CLIENT] Falling back to MOCK CVWC2019 embedding")
             return {
                 "success": True,
-                "embedding": np.random.rand(3072).tolist(),
-                "shape": (3072,),
+                "embedding": np.random.rand(2048).tolist(),
+                "shape": (2048,),
                 "mock": True
             }
     
-    # ==================== OmniVinci Methods ====================
-    
-    async def omnivinci_analyze_video(
+    # ==================== TransReID Methods ====================
+
+    async def transreid_generate_embedding(
         self,
-        video_path: Path,
-        prompt: str = "Analyze this video and describe what you see.",
-        tools: Optional[List[Dict[str, Any]]] = None,
-        tool_callback_url: Optional[str] = None,
+        image_bytes: bytes,
         fallback_to_queue: bool = True
     ) -> Dict[str, Any]:
         """
-        Analyze a video using OmniVinci model.
+        Generate embedding using TransReID Vision Transformer model.
+
+        TransReID uses ViT-Base architecture for robust feature extraction.
+        Outputs 768-dimensional embeddings.
 
         Args:
-            video_path: Path to video file
-            prompt: Analysis prompt
-            tools: Optional list of tools
-            tool_callback_url: URL for tool callbacks
+            image_bytes: Image as bytes
             fallback_to_queue: Whether to queue request if Modal unavailable
 
         Returns:
-            Dictionary with analysis results
+            Dictionary with embedding vector
         """
+        if self.use_mock:
+            logger.info(f"[MODAL CLIENT] Using MOCK TransReID embedding")
+            return {
+                "success": True,
+                "embedding": np.random.rand(768).tolist(),
+                "shape": (768,),
+                "mock": True
+            }
+
         try:
-            # Load video bytes
-            with open(video_path, "rb") as f:
-                video_bytes = f.read()
-
-            # Get Modal function
-            model = self._get_modal_function("omnivinci")
-
-            # Call with retry
+            model = self._get_modal_function("transreid")
             result = await self._call_with_retry(
-                model.analyze_video,
-                video_bytes,
-                prompt,
-                tools,
-                tool_callback_url
+                model.generate_embedding,
+                image_bytes
             )
-
             return result
 
         except ModalUnavailableError as e:
-            logger.error(f"Modal unavailable for OmniVinci: {e}")
+            logger.error(f"Modal unavailable for TransReID: {e}")
 
             if fallback_to_queue:
                 return await self._queue_request(
-                    "omnivinci",
-                    "analyze_video",
-                    video_bytes,
-                    prompt
+                    "transreid",
+                    "generate_embedding",
+                    image_bytes
                 )
             else:
-                raise
-    
-    async def omnivinci_analyze_image(
+                return {
+                    "success": False,
+                    "embedding": None,
+                    "error": "TransReID service unavailable"
+                }
+        except Exception as e:
+            logger.error(f"TransReID embedding error: {e}")
+            return {
+                "success": False,
+                "embedding": None,
+                "error": str(e)
+            }
+
+    # ==================== MatchAnything Methods ====================
+
+    async def matchanything_match(
         self,
-        image_bytes: bytes,
-        prompt: str = "Analyze this image in detail and describe what you see."
+        image1_bytes: bytes,
+        image2_bytes: bytes,
+        threshold: float = 0.2
     ) -> Dict[str, Any]:
         """
-        Analyze an image using OmniVinci's omni-modal LLM.
-        
-        Provides rich visual understanding beyond pattern matching,
-        offering contextual analysis of tiger characteristics, behavior, and environment.
-        
+        Match two images using MatchAnything-ELOFTR.
+
+        MatchAnything finds keypoint correspondences between image pairs,
+        useful for geometric verification of tiger identity.
+
         Args:
-            image_bytes: Image as bytes
-            prompt: Analysis prompt
-            
+            image1_bytes: First image as bytes
+            image2_bytes: Second image as bytes
+            threshold: Confidence threshold for keypoint filtering
+
         Returns:
-            Dictionary with detailed visual analysis
+            Dictionary with matching results:
+            - num_matches: Number of keypoint correspondences
+            - mean_score: Average confidence of matches
+            - success: Whether matching succeeded
         """
         if self.use_mock:
-            logger.info(f"[MODAL CLIENT] Using MOCK OmniVinci image analysis")
+            logger.info("[MODAL CLIENT] Using MOCK MatchAnything match")
+            num_matches = np.random.randint(50, 200)
+            scores = np.random.uniform(0.3, 0.9, num_matches)
             return {
                 "success": True,
-                "analysis": "Mock visual analysis: Tiger appears to be an adult Amur tiger in a natural setting. Stripe patterns are clearly visible along the flanks. The tiger's posture suggests alertness. Image quality is suitable for identification purposes.",
+                "num_matches": num_matches,
+                "mean_score": float(scores.mean()),
+                "max_score": float(scores.max()),
+                "total_score": float(scores.sum()),
                 "mock": True
             }
-        
+
         try:
-            logger.info(f"[MODAL CLIENT] Calling OmniVinci image analysis via Modal...")
-            
-            # Get Modal function
-            model = self._get_modal_function("omnivinci")
-            
-            # Call with retry
+            model = self._get_modal_function("matchanything")
             result = await self._call_with_retry(
-                model.analyze_image,
-                image_bytes,
-                prompt
+                model.match_images,
+                image1_bytes,
+                image2_bytes,
+                threshold
             )
-            
-            if result.get("success"):
-                logger.info(f"[MODAL CLIENT] OmniVinci analysis completed: {len(result.get('analysis', ''))} chars")
-            else:
-                logger.error(f"[MODAL CLIENT] OmniVinci analysis failed: {result.get('error')}")
-            
             return result
-        
+
         except ModalUnavailableError as e:
-            logger.error(f"Modal unavailable for OmniVinci image analysis: {e}")
-            # Return graceful fallback
+            logger.error(f"Modal unavailable for MatchAnything: {e}")
             return {
                 "success": False,
-                "error": "OmniVinci service unavailable",
-                "analysis": None
+                "num_matches": 0,
+                "error": "MatchAnything service unavailable"
             }
         except Exception as e:
-            logger.error(f"OmniVinci image analysis error: {e}")
+            logger.error(f"MatchAnything match error: {e}")
             return {
                 "success": False,
-                "error": str(e),
-                "analysis": None
+                "num_matches": 0,
+                "error": str(e)
             }
 
     # ==================== Queue Processing ====================

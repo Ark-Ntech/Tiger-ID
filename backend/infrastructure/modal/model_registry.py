@@ -32,40 +32,48 @@ class ModelRegistry:
     """
 
     # Default model configurations
+    # Maps to deployed Modal apps: 'detector', 'reid'
     _MODELS: Dict[str, ModelConfig] = {
         "tiger_reid": ModelConfig(
-            app_name="tiger-id-models",
-            class_name="TigerReIDModel",
+            app_name="reid",
+            class_name="TigerReID",
             embedding_dim=2048,
             description="Base tiger ReID model using ResNet50"
         ),
         "megadetector": ModelConfig(
-            app_name="tiger-id-models",
-            class_name="MegaDetectorModel",
+            app_name="detector",
+            class_name="MegaDetector",
             description="MegaDetector v5 for animal detection"
         ),
         "wildlife_tools": ModelConfig(
-            app_name="tiger-id-models",
+            app_name="reid",
             class_name="WildlifeToolsModel",
-            embedding_dim=2048,
-            description="WildlifeTools MegaDescriptor for wildlife ReID"
+            embedding_dim=1536,  # MegaDescriptor-L-384 with Swin-Large outputs 1536-dim
+            description="WildlifeTools MegaDescriptor-L-384 for wildlife ReID"
+        ),
+        "megadescriptor_b": ModelConfig(
+            app_name="reid",
+            class_name="MegaDescriptorBModel",
+            embedding_dim=1024,  # MegaDescriptor-B-224 with Swin-Base outputs 1024-dim
+            description="MegaDescriptor-B-224 fast variant for quick inference"
         ),
         "rapid_reid": ModelConfig(
-            app_name="tiger-id-models",
+            app_name="reid",
             class_name="RAPIDReIDModel",
             embedding_dim=2048,
             description="RAPID real-time animal pattern ReID"
         ),
         "cvwc2019_reid": ModelConfig(
-            app_name="tiger-id-models",
+            app_name="reid",
             class_name="CVWC2019ReIDModel",
-            embedding_dim=3072,
-            description="CVWC2019 part-pose guided tiger ReID"
+            embedding_dim=2048,  # Global stream output (primary embedding)
+            description="CVWC2019 part-pose guided tiger ReID with multi-stream architecture"
         ),
-        "omnivinci": ModelConfig(
-            app_name="tiger-id-models",
-            class_name="OmniVinciModel",
-            description="OmniVinci omni-modal visual understanding"
+        "transreid": ModelConfig(
+            app_name="reid",
+            class_name="TransReIDModel",
+            embedding_dim=768,  # ViT-Base output dimension
+            description="TransReID Vision Transformer-based re-identification"
         ),
     }
 

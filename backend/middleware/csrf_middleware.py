@@ -69,7 +69,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         
         if not csrf_token:
             # Try to get from form data
-            if request.headers.get("content-type", "").startswith("application/x-www-form-urlencoded"):
+            content_type = request.headers.get("content-type", "")
+            if content_type and content_type.startswith("application/x-www-form-urlencoded"):
                 form = await request.form()
                 csrf_token = form.get("csrf_token")
         

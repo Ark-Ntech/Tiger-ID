@@ -1,5 +1,6 @@
 """FastAPI middleware for rate limiting and security"""
 
+import asyncio
 from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -12,44 +13,51 @@ from backend.utils.logging import get_logger
 logger = get_logger(__name__)
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Rate limiting middleware for API endpoints"""
-    
+    """Rate limiting middleware for API endpoints
+
+    Uses asyncio.Lock for thread-safe access to the shared requests dictionary,
+    preventing race conditions under concurrent load.
+    """
+
     def __init__(self, app, requests_per_minute: int = 60, per_ip: bool = True):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
         self.per_ip = per_ip
         self.requests: Dict[str, list] = defaultdict(list)
-    
+        self._lock = asyncio.Lock()
+
     async def dispatch(self, request: Request, call_next):
         # Get client identifier
         if self.per_ip:
             client_id = request.client.host if request.client else "unknown"
         else:
             client_id = "global"
-        
-        # Clean old requests (older than 1 minute)
-        now = time.time()
-        self.requests[client_id] = [
-            req_time for req_time in self.requests[client_id]
-            if now - req_time < 60
-        ]
-        
-        # Check rate limit
-        if len(self.requests[client_id]) >= self.requests_per_minute:
-            logger.warning("Rate limit exceeded", client_id=client_id)
-            return JSONResponse(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content={
-                    "detail": "Rate limit exceeded. Please try again later.",
-                    "retry_after": 60
-                },
-                headers={"Retry-After": "60"}
-            )
-        
-        # Record request
-        self.requests[client_id].append(now)
-        
-        # Process request
+
+        # Thread-safe rate limit check and update
+        async with self._lock:
+            # Clean old requests (older than 1 minute)
+            now = time.time()
+            self.requests[client_id] = [
+                req_time for req_time in self.requests[client_id]
+                if now - req_time < 60
+            ]
+
+            # Check rate limit
+            if len(self.requests[client_id]) >= self.requests_per_minute:
+                logger.warning("Rate limit exceeded", client_id=client_id)
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={
+                        "detail": "Rate limit exceeded. Please try again later.",
+                        "retry_after": 60
+                    },
+                    headers={"Retry-After": "60"}
+                )
+
+            # Record request
+            self.requests[client_id].append(now)
+
+        # Process request (outside lock to avoid holding it during request processing)
         response = await call_next(request)
         return response
 

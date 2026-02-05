@@ -32,7 +32,7 @@ const Modal = ({ isOpen, onClose, title, children, footer, size = 'md' }: ModalP
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+          <div data-testid="modal-overlay" className="fixed inset-0 bg-black/30" aria-hidden="true" />
         </Transition.Child>
 
         <div className="fixed inset-0 flex items-center justify-center p-4">
@@ -46,13 +46,15 @@ const Modal = ({ isOpen, onClose, title, children, footer, size = 'md' }: ModalP
             leaveTo="opacity-0 scale-95"
           >
             <Dialog.Panel
+              data-testid="modal-content"
               className={`w-full ${sizeClasses[size]} bg-white rounded-lg shadow-xl`}
             >
               <div className="flex items-center justify-between px-6 py-4 border-b">
-                <Dialog.Title className="text-lg font-semibold text-gray-900">
+                <Dialog.Title data-testid="modal-title" className="text-lg font-semibold text-gray-900">
                   {title}
                 </Dialog.Title>
                 <button
+                  data-testid="modal-close"
                   onClick={onClose}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >

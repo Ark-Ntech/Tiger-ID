@@ -16,6 +16,7 @@ from backend.database.vector_search import store_embedding
 from backend.models.detection import TigerDetectionModel
 from backend.models.interfaces.base_reid_model import BaseReIDModel
 from backend.repositories.tiger_repository import TigerRepository
+from backend.services.tiger.model_loader import get_model_loader
 
 logger = get_logger(__name__)
 
@@ -41,46 +42,22 @@ class TigerRegistrationService:
         self.tiger_repo = tiger_repo or TigerRepository(db)
         self.detection_model = detection_model or TigerDetectionModel()
 
-        # Initialize available models
-        self._available_models: Dict[str, type] = {}
-        self._initialize_available_models()
-
-    def _initialize_available_models(self):
-        """Initialize available RE-ID models."""
-        from backend.models.reid import TigerReIDModel
-
-        self._available_models = {
-            'tiger_reid': TigerReIDModel
-        }
-
-        try:
-            from backend.models.wildlife_tools import WildlifeToolsReIDModel
-            self._available_models['wildlife_tools'] = WildlifeToolsReIDModel
-        except ImportError:
-            pass
-
-        try:
-            from backend.models.cvwc2019_reid import CVWC2019ReIDModel
-            self._available_models['cvwc2019'] = CVWC2019ReIDModel
-        except ImportError:
-            pass
-
-        try:
-            from backend.models.rapid_reid import RAPIDReIDModel
-            self._available_models['rapid'] = RAPIDReIDModel
-        except ImportError:
-            pass
+        # Use centralized ModelLoader for model management
+        self._model_loader = get_model_loader()
 
     def _get_model(self, model_name: Optional[str] = None) -> BaseReIDModel:
-        """Get model instance by name."""
-        if model_name is None:
-            model_name = 'wildlife_tools'
+        """Get model instance by name.
 
-        if model_name not in self._available_models:
-            raise ValueError(f"Model '{model_name}' not available")
+        Args:
+            model_name: Name of model to get (uses default if None)
 
-        model_class = self._available_models[model_name]
-        return model_class()
+        Returns:
+            Model instance
+
+        Raises:
+            ValueError: If model is not available
+        """
+        return self._model_loader.get_model(model_name)
 
     async def register_new_tiger(
         self,

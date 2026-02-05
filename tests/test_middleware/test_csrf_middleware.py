@@ -73,20 +73,21 @@ class TestCSRFMiddleware:
         """Test that safe methods skip CSRF check"""
         mock_app = MagicMock()
         middleware = CSRFMiddleware(mock_app)
-        
+
         mock_request = MagicMock()
         mock_request.method = "GET"
         mock_request.url.path = "/api/v1/investigations"
         mock_request.headers.get.return_value = None
-        
-        mock_response = MagicMock()
+
+        from starlette.responses import Response
+        mock_response = Response(content="test", status_code=200)
         mock_call_next = AsyncMock(return_value=mock_response)
-        
+
         result = await middleware.dispatch(mock_request, mock_call_next)
-        
-        assert result == mock_response
+
         # Should have CSRF token in response headers
         assert "X-CSRF-Token" in result.headers
+        assert result.status_code == 200
     
     @pytest.mark.asyncio
     async def test_skip_paths(self):

@@ -330,6 +330,41 @@ Analyze entity relationships.
 }
 ```
 
+### Investigation 2.0 Endpoints
+
+#### `POST /api/v1/investigations2/launch`
+Launch an Investigation 2.0 workflow.
+
+**Request:** `multipart/form-data`
+- `image`: Image file (JPEG, PNG) - required
+- `location`: Location context (optional)
+- `date`: Date context (optional)
+- `notes`: Additional notes (optional)
+- `audience`: Report audience (optional, default: `internal`)
+  - Valid values: `law_enforcement`, `conservation`, `internal`, `public`
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "investigation_id": "...",
+  "message": "Investigation started"
+}
+```
+
+#### `GET /api/v1/investigations2/{investigation_id}`
+Get Investigation 2.0 status and results.
+
+#### `POST /api/v1/investigations2/{investigation_id}/regenerate-report`
+Regenerate investigation report with a different audience.
+
+**Request Body:**
+```json
+{
+  "audience": "law_enforcement"
+}
+```
+
 ### Tiger Endpoints
 
 #### `POST /api/v1/tigers/identify`
@@ -517,6 +552,63 @@ Get audit logs (admin only).
 #### `GET /api/v1/audit/summary`
 Get audit log summary (admin only).
 
+### Model Testing Endpoints
+
+#### `POST /api/v1/model-testing/evaluate`
+Evaluate a single model with test images.
+
+**Request Body:**
+```json
+{
+  "model_name": "wildlife_tools",
+  "test_images": ["base64-encoded-image-1", "base64-encoded-image-2"]
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "model_name": "wildlife_tools",
+  "embeddings": [[0.123, 0.456, ...], [0.789, 0.012, ...]],
+  "similarity_matrix": [[1.0, 0.85], [0.85, 1.0]],
+  "inference_time_ms": 245.3,
+  "embedding_dimension": 1536
+}
+```
+
+#### `POST /api/v1/model-testing/compare`
+Compare multiple models on the same test images.
+
+**Request Body:**
+```json
+{
+  "model_names": ["wildlife_tools", "cvwc2019_reid", "transreid"],
+  "test_images": ["base64-encoded-image-1", "base64-encoded-image-2"]
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "models": {
+    "wildlife_tools": {
+      "embeddings": [...],
+      "similarity_matrix": [...],
+      "inference_time_ms": 245.3,
+      "embedding_dimension": 1536
+    },
+    "cvwc2019_reid": {...},
+    "transreid": {...}
+  },
+  "cross_model_agreement": {
+    "wildlife_tools_vs_cvwc2019_reid": 0.87,
+    "wildlife_tools_vs_transreid": 0.82,
+    "cvwc2019_reid_vs_transreid": 0.79
+  },
+  "total_time_ms": 892.1
+}
+```
+
 ## Error Responses
 
 All endpoints may return error responses in the following format:
@@ -539,12 +631,40 @@ All endpoints may return error responses in the following format:
 
 ## Rate Limiting
 
+### API Rate Limits
+
 API requests are limited to **60 requests per minute per IP address**.
 
 Rate limit headers included in responses:
 - `X-RateLimit-Limit`: Maximum requests allowed
 - `X-RateLimit-Remaining`: Remaining requests
 - `X-RateLimit-Reset`: Reset time (Unix timestamp)
+
+### Discovery System Rate Limiting
+
+The continuous tiger discovery pipeline implements per-domain rate limiting for web crawling:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Base interval | 2 seconds | Minimum time between requests to the same domain |
+| Max backoff | 60 seconds | Maximum wait time after repeated errors |
+| Recovery rate | 0.9x | Gradual backoff reduction on successful requests |
+
+**Backoff-Triggering Status Codes:**
+- `429` - Too Many Requests
+- `503` - Service Unavailable
+- `520-524` - Cloudflare errors
+
+### Image Deduplication
+
+The discovery system prevents duplicate processing using SHA256 content hashing:
+
+1. Images are hashed **before** ML processing
+2. Duplicate images skip GPU inference (saves compute resources)
+3. The `tiger_images.content_hash` column enables fast duplicate lookups
+4. Duplicate relationships are tracked via `is_duplicate_of` foreign key
+
+This ensures efficient resource usage when crawling facilities with overlapping image galleries.
 
 ## Interactive API Documentation
 

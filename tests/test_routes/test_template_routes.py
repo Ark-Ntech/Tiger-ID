@@ -46,14 +46,14 @@ class TestTemplateRoutes:
         """Test applying template to investigation"""
         from backend.services.investigation_service import InvestigationService
         from backend.services.template_service import TemplateService
-        
+
         # Create investigation and template
         inv_service = InvestigationService(db_session)
         investigation = inv_service.create_investigation(
             title="Test Investigation",
             created_by=test_user.user_id
         )
-        
+
         template_service = TemplateService(db_session)
         template = template_service.create_template(
             name="Test Template",
@@ -62,11 +62,11 @@ class TestTemplateRoutes:
             default_agents=[],
             created_by=test_user.user_id
         )
-        
+
         response = test_client.post(
             f"/api/v1/templates/{template.template_id}/apply?investigation_id={investigation.investigation_id}",
             headers=auth_headers
         )
-        
+
         assert response.status_code == 200
 

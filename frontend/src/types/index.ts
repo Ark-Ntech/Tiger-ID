@@ -793,3 +793,7 @@ export interface AvailableModelsResponse {
   default: string
 }
 
+// Re-export verification and discovery types
+export * from './verification'
+export * from './discovery'
+

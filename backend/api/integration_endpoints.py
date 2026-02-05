@@ -10,14 +10,11 @@ from backend.database.models import Facility, Investigation, BackgroundJob
 from backend.services.integration_service import IntegrationService
 from backend.services.external_apis.factory import get_api_clients
 from backend.services.external_apis.atrw_dataset import ATRWDatasetManager
-from backend.jobs.data_sync_jobs import (
-    sync_facility_usda_task,
-    sync_facility_inspections_task,
-    sync_cites_trade_records_task,
-    sync_usfws_permits_task,
-    download_atrw_dataset_task
-)
 from sqlalchemy.orm import Session
+
+
+# Note: Background task processing via Celery has been removed.
+# All sync operations now run synchronously.
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
@@ -97,17 +94,11 @@ async def sync_facility_usda(
         raise HTTPException(status_code=503, detail="USDA integration not enabled")
     
     if background:
-        # Run in background task
-        task = sync_facility_usda_task.delay(
-            license_number=request.license_number,
-            investigation_id=str(request.investigation_id) if request.investigation_id else None
+        raise HTTPException(
+            status_code=501,
+            detail="Background processing not available. Set background=false to run synchronously."
         )
-        return {
-            "status": "queued",
-            "task_id": task.id,
-            "message": "Sync task queued for background processing"
-        }
-    
+
     # Run synchronously
     integration_service = IntegrationService(
         session=db,
@@ -158,16 +149,11 @@ async def sync_inspections(
         raise HTTPException(status_code=503, detail="USDA integration not enabled")
     
     if background:
-        task = sync_facility_inspections_task.delay(
-            facility_id=str(request.facility_id),
-            investigation_id=str(request.investigation_id) if request.investigation_id else None
+        raise HTTPException(
+            status_code=501,
+            detail="Background processing not available. Set background=false to run synchronously."
         )
-        return {
-            "status": "queued",
-            "task_id": task.id,
-            "message": "Inspection sync queued for background processing"
-        }
-    
+
     integration_service = IntegrationService(
         session=db,
         usda_client=clients["usda"],
@@ -209,19 +195,11 @@ async def sync_cites_trade_records(
         raise HTTPException(status_code=503, detail="CITES integration not enabled")
     
     if background:
-        task = sync_cites_trade_records_task.delay(
-            investigation_id=str(request.investigation_id),
-            country_origin=request.country_origin,
-            country_destination=request.country_destination,
-            year=request.year,
-            limit=request.limit
+        raise HTTPException(
+            status_code=501,
+            detail="Background processing not available. Set background=false to run synchronously."
         )
-        return {
-            "status": "queued",
-            "task_id": task.id,
-            "message": "CITES trade sync queued for background processing"
-        }
-    
+
     integration_service = IntegrationService(
         session=db,
         usda_client=clients["usda"],
@@ -266,18 +244,11 @@ async def sync_usfws_permits(
         raise HTTPException(status_code=503, detail="USFWS integration not enabled")
     
     if background:
-        task = sync_usfws_permits_task.delay(
-            investigation_id=str(request.investigation_id),
-            permit_number=request.permit_number,
-            applicant_name=request.applicant_name,
-            limit=request.limit
+        raise HTTPException(
+            status_code=501,
+            detail="Background processing not available. Set background=false to run synchronously."
         )
-        return {
-            "status": "queued",
-            "task_id": task.id,
-            "message": "USFWS permit sync queued for background processing"
-        }
-    
+
     integration_service = IntegrationService(
         session=db,
         usda_client=clients["usda"],
@@ -315,16 +286,11 @@ async def download_atrw_dataset(
         Download status
     """
     if background:
-        task = download_atrw_dataset_task.delay(
-            dataset_dir=request.dataset_dir,
-            force=request.force
+        raise HTTPException(
+            status_code=501,
+            detail="Background processing not available. Set background=false to run synchronously."
         )
-        return {
-            "status": "queued",
-            "task_id": task.id,
-            "message": "ATRW dataset download queued for background processing"
-        }
-    
+
     import asyncio
     manager = ATRWDatasetManager(dataset_dir=request.dataset_dir)
     result = await manager.download_dataset(force=request.force)

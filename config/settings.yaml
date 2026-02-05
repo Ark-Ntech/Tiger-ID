@@ -19,15 +19,6 @@ redis:
   url: ${REDIS_URL}
   decode_responses: true
 
-celery:
-  broker_url: ${CELERY_BROKER_URL}
-  result_backend: ${CELERY_RESULT_BACKEND}
-  task_serializer: json
-  result_serializer: json
-  accept_content: [json]
-  timezone: UTC
-  enable_utc: true
-
 storage:
   type: ${STORAGE_TYPE:-local}  # local, s3, minio
   local_path: ${STORAGE_PATH:-./data/storage}
@@ -41,16 +32,6 @@ authentication:
   mfa_enabled: ${MFA_ENABLED:-false}
   password_min_length: 8
   
-omnivinci:
-  api_key: ${OMNIVINCI_API_KEY}
-  api_url: ${OMNIVINCI_API_URL:-https://api.nvidia.com/v1/models/omnivinci}
-  model_version: ${OMNIVINCI_MODEL_VERSION:-latest}
-  max_tokens: 4096
-  temperature: 0.7
-  num_video_frames: ${OMNIVINCI_NUM_VIDEO_FRAMES:-128}
-  load_audio_in_video: ${OMNIVINCI_LOAD_AUDIO:-true}
-  audio_length: ${OMNIVINCI_AUDIO_LENGTH:-max_3600}
-
 modal:
   # Modal configuration for serverless GPU compute
   enabled: ${MODAL_ENABLED:-true}
@@ -61,11 +42,7 @@ modal:
   queue_max_size: ${MODAL_QUEUE_MAX_SIZE:-100}
   # Fallback behavior when Modal unavailable
   fallback_to_queue: ${MODAL_FALLBACK_TO_QUEUE:-true}
-  # Environment variables to pass to Modal
-  env_vars:
-    OMNIVINCI_API_KEY: ${OMNIVINCI_API_KEY}
-    OMNIVINCI_API_URL: ${OMNIVINCI_API_URL:-https://api.nvidia.com/v1/models/omnivinci}
-  
+
 firecrawl:
   api_key: ${FIRECRAWL_API_KEY}
   timeout: 30
@@ -122,12 +99,37 @@ monitoring:
   log_level: ${LOG_LEVEL:-INFO}
 
 auto_investigation:
-  enabled: ${AUTO_INVESTIGATION_ENABLED:-false}
-  min_confidence: ${AUTO_INVESTIGATION_MIN_CONFIDENCE:-0.8}
+  # Master switch for auto-triggered investigations from discovery pipeline
+  enabled: ${AUTO_INVESTIGATION_ENABLED:-true}
+
+  # Quality gates - higher thresholds than general pipeline to reduce noise
+  min_quality_score: ${AUTO_INVESTIGATION_MIN_QUALITY:-60.0}  # 0-100 scale
+  min_detection_confidence: ${AUTO_INVESTIGATION_MIN_CONFIDENCE:-0.85}  # 0-1 scale
+
+  # Rate limiting to prevent investigation spam
+  max_per_hour: ${AUTO_INVESTIGATION_MAX_PER_HOUR:-5}
+  min_facility_interval_seconds: ${AUTO_INVESTIGATION_FACILITY_INTERVAL:-3600}  # 1 hour
+
+  # Async behavior
+  always_async: true  # Auto-investigations always run in background
+  use_duckduckgo_deep_research: true  # Use free DuckDuckGo (not Claude web search)
+
+  # Priority mapping based on detection confidence
   priority_mapping:
     high: 0.95
-    medium: 0.8
-    low: 0.7
+    medium: 0.85
+    low: 0.70
+
+verification_queue:
+  # All tigers go to pending review - both auto-discoveries AND user uploads
+  user_uploads_status: "pending"
+  auto_discovery_status: "pending"
+  require_human_review: true
+
+  # Priority defaults by source
+  user_upload_priority: "medium"
+  auto_discovery_high_confidence_priority: "high"  # >= 85% confidence
+  auto_discovery_default_priority: "medium"
 
 langgraph:
   enabled: ${USE_LANGGRAPH:-false}

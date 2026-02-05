@@ -55,15 +55,15 @@ The Docker Compose setup includes the following services:
 
 ### Core Services
 
-- **postgres**: PostgreSQL database with pgvector extension
-- **redis**: Redis cache and message broker
-- **api**: FastAPI backend service (port 8000)
+- **api**: FastAPI backend service (port 8000) with SQLite database
 - **frontend**: React frontend (port 80, or 5173 for dev)
 
-### Background Workers
+### Background Processing
 
-- **celery_worker**: Celery worker for async tasks
-- **celery_beat**: Celery beat scheduler for periodic tasks
+Background tasks are handled via:
+- **Modal** - Serverless GPU functions for ML inference
+- **LangGraph** - Async investigation workflows
+- **Threading** - Non-blocking database operations
 
 ## Configuration
 
@@ -72,14 +72,13 @@ The Docker Compose setup includes the following services:
 All configuration is managed through the `.env` file. Key variables:
 
 #### Required
-- `DATABASE_URL`: PostgreSQL connection string
-- `REDIS_URL`: Redis connection string
+- `DATABASE_URL`: SQLite database path (default: `sqlite:///data/tiger_id.db`)
 - `SECRET_KEY`: Application secret key (auto-generated for dev)
 - `JWT_SECRET_KEY`: JWT signing key (auto-generated for dev)
 
 #### Optional (External APIs)
 These are disabled by default for local development:
-- `OMNIVINCI_API_KEY`: NVIDIA OmniVinci API key
+- `ANTHROPIC_API_KEY`: Anthropic Claude API key (required for report generation)
 - `FIRECRAWL_API_KEY`: Firecrawl web scraping API key
 - `YOUTUBE_API_KEY`: YouTube Data API v3 key
 - `META_ACCESS_TOKEN`: Meta/Facebook Graph API access token
@@ -95,7 +94,6 @@ These are disabled by default for local development:
 Models are automatically downloaded on first startup via the `init_models.py` script:
 
 - **MegaDetector v5**: Required for tiger detection (~500MB)
-- **OmniVinci**: Optional, only if `OMNIVINCI_USE_LOCAL=true` (~18GB)
 
 Models are stored in `./data/models/` and persist across container restarts.
 
@@ -117,28 +115,22 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
-### Database Migrations
+### Database Initialization
 
-The database schema is automatically initialized on first startup. To manually run migrations:
+The database schema is automatically initialized on first startup. To manually initialize:
 
 ```bash
-docker-compose exec api python -c "from backend.database.connection import init_db; init_db()"
+docker-compose exec api python -c "from backend.database import init_db; init_db()"
 ```
 
 ### Access Database
 
 ```bash
-# Using psql
-docker-compose exec postgres psql -U tiger_user -d tiger_investigation
+# Using sqlite3 CLI
+sqlite3 data/tiger_id.db
 
-# Or connect from host
-psql postgresql://tiger_user:tiger_password@localhost:5432/tiger_investigation
-```
-
-### Access Redis
-
-```bash
-docker-compose exec redis redis-cli
+# Or from within Docker
+docker-compose exec api sqlite3 /app/data/tiger_id.db
 ```
 
 ### View API Logs
@@ -181,8 +173,6 @@ docker-compose exec api pytest backend/tests/test_auth.py
    ```
 
 2. **Check ports are available**:
-   - Port 5432 (PostgreSQL)
-   - Port 6379 (Redis)
    - Port 8000 (API)
    - Port 5173 (Frontend dev server)
    - Port 80 (Frontend production)
@@ -192,16 +182,21 @@ docker-compose exec api pytest backend/tests/test_auth.py
    docker-compose logs
    ```
 
-### Database Connection Errors
+### Database Errors
 
-1. **Wait for database to be ready**:
+1. **Check sqlite-vec is installed**:
    ```bash
-   docker-compose logs postgres | grep "ready to accept connections"
+   pip show sqlite-vec
    ```
 
-2. **Check database health**:
+2. **Verify database file exists**:
    ```bash
-   docker-compose exec postgres pg_isready -U tiger_user
+   ls -la data/tiger_id.db
+   ```
+
+3. **Re-initialize if needed**:
+   ```bash
+   python -c "from backend.database import init_db; init_db()"
    ```
 
 ### Model Download Fails
@@ -227,7 +222,7 @@ Models are downloaded automatically on startup. If download fails:
 curl http://localhost:8000/health
 
 # Should return:
-# {"status":"healthy","database":"healthy","redis":"healthy","version":"1.0.0"}
+# {"status":"healthy","database":"healthy","models":"available",...}
 ```
 
 ### "Permission Denied" Errors
@@ -271,14 +266,11 @@ Code changes are automatically reflected in containers due to volume mounts:
 - Changes to Python files trigger auto-reload (FastAPI)
 - Frontend changes are handled by Vite's hot module replacement
 
-### Running Migrations
+### Reinitialize Database
 
 ```bash
-# Create migration (if using Alembic)
-docker-compose exec api alembic revision --autogenerate -m "description"
-
-# Apply migrations
-docker-compose exec api alembic upgrade head
+# Database schema is auto-initialized; to force reinitialize:
+docker-compose exec api python -c "from backend.database import init_db; init_db()"
 ```
 
 ### Adding Dependencies
@@ -325,16 +317,7 @@ FIRECRAWL_SEARCH_ENABLED=true
 
 Then restart services:
 ```bash
-docker-compose restart api celery_worker
-```
-
-### Enable Local OmniVinci Model
-
-**Warning**: OmniVinci model is ~18GB and requires significant GPU memory.
-
-```env
-OMNIVINCI_USE_LOCAL=true
-OMNIVINCI_MODEL_PATH=./data/models/omnivinci/omnivinci
+docker-compose restart api
 ```
 
 The model will be downloaded automatically on next startup (this may take hours).

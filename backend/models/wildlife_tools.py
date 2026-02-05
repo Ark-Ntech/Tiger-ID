@@ -48,7 +48,7 @@ class WildlifeToolsReIDModel(BaseReIDModel):
     @property
     def embedding_dim(self) -> int:
         """Get the embedding dimension for this model."""
-        return 2048
+        return 1536
 
     @property
     def similarity_threshold(self) -> float:

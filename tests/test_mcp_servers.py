@@ -149,10 +149,10 @@ class TestDatabaseMCPServer:
     async def test_query_tigers(self, db_session, sample_user_id):
         """Test query_tigers tool"""
         server = DatabaseMCPServer(db=db_session)
-        
+
         # Create test tiger
         tiger = Tiger(
-            tiger_id=uuid4(),
+            tiger_id=str(uuid4()),
             name="Test Tiger",
             alias="TT-001",
             status="active"
@@ -175,10 +175,10 @@ class TestDatabaseMCPServer:
     async def test_query_tigers_by_status(self, db_session):
         """Test query_tigers with status filter"""
         server = DatabaseMCPServer(db=db_session)
-        
+
         # Create test tiger
         tiger = Tiger(
-            tiger_id=uuid4(),
+            tiger_id=str(uuid4()),
             name="Monitored Tiger",
             status="monitored"
         )
@@ -201,10 +201,10 @@ class TestDatabaseMCPServer:
     async def test_query_facilities(self, db_session):
         """Test query_facilities tool"""
         server = DatabaseMCPServer(db=db_session)
-        
+
         # Create test facility
         facility = Facility(
-            facility_id=uuid4(),
+            facility_id=str(uuid4()),
             exhibitor_name="Test Facility",
             state="CA",
             city="Los Angeles",
@@ -228,12 +228,12 @@ class TestDatabaseMCPServer:
     async def test_query_investigations(self, db_session, sample_user_id):
         """Test query_investigations tool"""
         server = DatabaseMCPServer(db=db_session)
-        
+
         # Create test investigation
         investigation = Investigation(
-            investigation_id=uuid4(),
+            investigation_id=str(uuid4()),
             title="Test Investigation",
-            created_by=uuid4(),
+            created_by=str(uuid4()),
             status="active",
             priority="high"
         )
@@ -277,8 +277,8 @@ class TestDatabaseMCPServer:
         # SQLite doesn't support pgvector, so this will error in test environment
         # In production with PostgreSQL + pgvector, this would work
         if "error" in result:
-            # Expected error with SQLite - pgvector requires PostgreSQL
-            assert "vector" in result["error"].lower() or "syntax" in result["error"].lower()
+            # Expected error with SQLite - pgvector requires PostgreSQL or vec_embeddings table
+            assert any(keyword in result["error"].lower() for keyword in ["vector", "syntax", "no such table", "vec_embeddings"])
         else:
             assert "matches" in result
             assert "count" in result

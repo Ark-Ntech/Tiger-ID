@@ -4,24 +4,15 @@ Modern tiger trafficking investigation platform with AI-powered analysis, real-t
 
 ---
 
-## ⚡ Quick Start (30 Seconds)
+## ⚡ Quick Start
 
-### Option 1: npm (Simplest - Recommended!)
+**See [START.md](START.md) for complete quick start guide.**
 
 ```bash
-npm start
+npm start   # Start everything (backend + frontend)
 ```
 
-### Option 2: Docker (Recommended for Production)
-
-```batch
-setup\windows\START_DOCKER.bat
-```
-
-**Access:** http://localhost:5173  
-**Login:** admin / admin
-
-✅ **That's it!** Everything else is automatic.
+**Access:** http://localhost:5173 | **Login:** admin / admin
 
 ---
 
@@ -29,9 +20,9 @@ setup\windows\START_DOCKER.bat
 
 A comprehensive multi-agent investigative platform for detecting tiger trafficking through:
 
-- 🔍 **AI-Powered Investigation** - Gemini-powered agent orchestration with Search Grounding
+- 🔍 **AI-Powered Investigation** - Claude-powered investigation workflows with chain-of-thought reasoning
 - 🐅 **Tiger Re-Identification** - Deep learning stripe pattern analysis with 4+ models
-- 🌐 **Web Intelligence** - Real-time search with citations via Gemini Search Grounding
+- 🌐 **Web Intelligence** - DuckDuckGo web research with citation tracking
 - 🏢 **Facility Monitoring** - Continuous social media and USDA license tracking
 - 👥 **Multi-User Collaboration** - Real-time workspace with role-based access
 - 📊 **Analytics & Reporting** - Comprehensive dashboards and exports
@@ -45,8 +36,8 @@ A comprehensive multi-agent investigative platform for detecting tiger trafficki
 **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + Redux Toolkit
 **Backend:** FastAPI + SQLite/PostgreSQL + pgvector + Redis
 **Real-time:** WebSocket + Server-Sent Events (SSE)
-**AI/ML:** PyTorch + Transformers + OmniVinci + MegaDetector + Custom Siamese Networks
-**LLM:** Google Gemini 2.5 (Flash + Pro) with Search Grounding
+**AI/ML:** PyTorch + Transformers + MegaDetector + 6-Model ReID Ensemble
+**LLM:** Anthropic Claude API (investigation reasoning, reports)
 **Orchestration:** LangGraph + AutoGen + MCP (Model Context Protocol)
 **ML Infrastructure:** Modal (Serverless GPU compute for all models)
 
@@ -75,7 +66,7 @@ Tiger ID/
 └── tests/             # 59 test files
 ```
 
-**See:** `PROJECT_STRUCTURE.md` for complete details
+**See:** `docs/ARCHITECTURE.md` for complete system architecture
 
 ---
 
@@ -84,7 +75,7 @@ Tiger ID/
 ### Start Here
 - **START.md** - One-page quick start
 - **setup/docs/SETUP_GUIDE.md** - Complete setup guide
-- **DOCUMENTATION_INDEX.md** - Find any document
+- **docs/ARCHITECTURE.md** - System architecture overview
 
 ### By Role
 - **New Users** → `START.md`
@@ -112,15 +103,16 @@ Tiger ID/
 - Investigation templates and saved searches
 
 ### Tiger Identification
-- **4+ Re-ID Models** (all on Modal serverless GPUs):
-  - **TigerReID** - ResNet50-based tiger re-identification
-  - **WildlifeTools** - MegaDescriptor embeddings (A100 GPU)
-  - **RAPID** - Real-time Animal Pattern ReID
-  - **CVWC2019** - Part-pose guided tiger ReID
-- **MegaDetector** - Animal detection v5
-- **OmniVinci** - Multi-modal LLM for image understanding
-- Ensemble mode support (staggered/parallel)
-- Confidence scoring and similarity matching
+- **6 Re-ID Models** (all on Modal serverless GPUs):
+  - **WildlifeTools** - MegaDescriptor-L-384 (1536-dim, weight 0.40)
+  - **CVWC2019** - Part-pose guided ReID (2048-dim, weight 0.30)
+  - **TransReID** - Vision Transformer (768-dim, weight 0.20)
+  - **MegaDescriptor-B** - Fast variant (1024-dim, weight 0.15)
+  - **TigerReID** - ResNet50 baseline (2048-dim, weight 0.10)
+  - **RAPID** - Real-time ReID (2048-dim, weight 0.05)
+- **MegaDetector v5** - Animal detection and cropping
+- Ensemble modes: staggered, parallel, weighted, verified
+- Confidence calibration and k-reciprocal re-ranking
 - Historical tracking and relationship analysis
 
 ### Facility Monitoring
@@ -241,9 +233,9 @@ We welcome contributions! See `CONTRIBUTING.md` for:
 
 ## 🔒 Security
 
-For security vulnerabilities, see `docs/SECURITY.md`.
+For security concerns, please report via private channels (not public GitHub issues).
 
-**Do not report security issues through public GitHub issues.**
+See `docs/DEPLOYMENT.md` Security Checklist section for production hardening.
 
 ---
 
@@ -257,7 +249,7 @@ Apache License 2.0 - see `LICENSE` file.
 
 1. **Quick Start:** `START.md`
 2. **Setup Issues:** `setup/docs/TROUBLESHOOTING.md`
-3. **Find Docs:** `DOCUMENTATION_INDEX.md`
+3. **Find Docs:** `docs/` folder
 4. **Check Status:** `python setup\scripts\startup_check.py`
 
 ---
@@ -274,12 +266,11 @@ Apache License 2.0 - see `LICENSE` file.
 
 ### Modal Integration (Nov 2025)
 - ✅ All ML models on Modal serverless GPUs
-- ✅ OmniVinci upgraded to fully open source
-- ✅ Zero API keys required
+- ✅ 6-model ReID ensemble fully deployed
+- ✅ MatchAnything geometric verification
 - ✅ Simplified startup with npm commands
-- ✅ 21/21 tests passing
 
-**See:** `docs/MODAL_INTEGRATION_COMPLETE.md` for Modal deployment details
+**See:** `docs/MODAL.md` for Modal deployment details
 
 ### React Migration (Complete)
 - ✅ Complete Streamlit → React migration
@@ -303,7 +294,7 @@ Apache License 2.0 - see `LICENSE` file.
 ### Tiger Re-Identification
 - Upload single or batch images
 - Automatic tiger identification with confidence scores
-- Support for 4+ different Re-ID models
+- Support for 6 ensemble Re-ID models
 - Ensemble mode for improved accuracy
 - Historical tracking and relationship analysis
 

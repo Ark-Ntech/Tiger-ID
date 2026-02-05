@@ -186,9 +186,11 @@ class InvestigationRepository(BaseRepository[Investigation]):
         Returns:
             List of Investigation objects
         """
+        # Convert enum to its string value for SQLite compatibility
+        status_value = status.value if hasattr(status, 'value') else status
         return (
             self.db.query(Investigation)
-            .filter(Investigation.status == status)
+            .filter(Investigation.status == status_value)
             .order_by(desc(Investigation.created_at))
             .all()
         )
@@ -199,15 +201,15 @@ class InvestigationRepository(BaseRepository[Investigation]):
         Returns:
             List of active Investigation objects
         """
+        # Convert enum values to strings for SQLite compatibility
+        statuses = [
+            InvestigationStatus.draft.value,
+            InvestigationStatus.active.value,
+            InvestigationStatus.pending_verification.value
+        ]
         return (
             self.db.query(Investigation)
-            .filter(
-                Investigation.status.in_([
-                    InvestigationStatus.draft,
-                    InvestigationStatus.active,
-                    InvestigationStatus.pending_verification
-                ])
-            )
+            .filter(Investigation.status.in_(statuses))
             .order_by(desc(Investigation.updated_at))
             .all()
         )
@@ -221,9 +223,11 @@ class InvestigationRepository(BaseRepository[Investigation]):
         Returns:
             List of Investigation objects
         """
+        # Convert enum to its string value for SQLite compatibility
+        priority_value = priority.value if hasattr(priority, 'value') else priority
         return (
             self.db.query(Investigation)
-            .filter(Investigation.priority == priority)
+            .filter(Investigation.priority == priority_value)
             .order_by(desc(Investigation.created_at))
             .all()
         )
@@ -234,11 +238,11 @@ class InvestigationRepository(BaseRepository[Investigation]):
         Returns:
             List of high-priority Investigation objects
         """
+        # Convert enum values to strings for SQLite compatibility
+        priorities = [Priority.high.value, Priority.critical.value]
         return (
             self.db.query(Investigation)
-            .filter(
-                Investigation.priority.in_([Priority.high, Priority.critical])
-            )
+            .filter(Investigation.priority.in_(priorities))
             .order_by(desc(Investigation.updated_at))
             .all()
         )
@@ -379,7 +383,9 @@ class InvestigationRepository(BaseRepository[Investigation]):
         if not investigation:
             return None
 
-        investigation.status = status
+        # Convert enum to its string value for SQLite compatibility
+        status_value = status.value if hasattr(status, 'value') else status
+        investigation.status = status_value
 
         # Set timestamps based on status
         if status == InvestigationStatus.active:

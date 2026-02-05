@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Card from '../components/common/Card'
 import Button from '../components/common/Button'
@@ -8,218 +7,29 @@ import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import Investigation2Upload from '../components/investigations/Investigation2Upload'
 import Investigation2Progress from '../components/investigations/Investigation2Progress'
 import Investigation2ResultsEnhanced from '../components/investigations/Investigation2ResultsEnhanced'
-import { useLaunchInvestigation2Mutation, useGetInvestigation2Query } from '../app/api'
+import { InvestigationLayout } from '../components/investigations/layout'
+import { Investigation2Provider, useInvestigation2 } from '../context/Investigation2Context'
 
-interface ProgressStep {
-  phase: string
-  status: 'pending' | 'running' | 'completed' | 'error'
-  timestamp?: string
-  data?: any
-}
-
-const Investigation2 = () => {
+/**
+ * Inner component that uses the Investigation2 context.
+ * This allows the component to access all state through context instead of props.
+ */
+const Investigation2Content = () => {
   const navigate = useNavigate()
-  const [investigationId, setInvestigationId] = useState<string | null>(null)
-  const [uploadedImage, setUploadedImage] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [context, setContext] = useState({
-    location: '',
-    date: '',
-    notes: ''
-  })
-  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [websocket, setWebsocket] = useState<WebSocket | null>(null)
 
-  const [launchInvestigation, { isLoading: isLaunching }] = useLaunchInvestigation2Mutation()
-  const { data: investigationResponse } = useGetInvestigation2Query(
-    investigationId || '',
-    { skip: !investigationId, pollingInterval: 2000 } // Poll every 2 seconds for faster updates
-  )
-
-  // Extract data from API response wrapper
-  const investigationData = investigationResponse?.data
-
-  // Update progress from polling data (in case WebSocket misses events)
-  useEffect(() => {
-    if (investigationData && investigationData.steps) {
-      console.log('Updating progress from investigation data:', investigationData)
-
-      // Create a map of backend steps by step_type
-      const stepsMap = new Map(
-        investigationData.steps.map((s: any) => [s.step_type, s])
-      )
-      
-      // Update progress steps with data from backend
-      setProgressSteps(prev => 
-        prev.map(step => {
-          const backendStep = stepsMap.get(step.phase) as { status: string; result?: any; timestamp?: string } | undefined
-          if (backendStep) {
-            // Backend step exists - update status
-            const status = backendStep.status === 'completed' || backendStep.status.includes('completed')
-              ? 'completed'
-              : backendStep.status === 'running'
-              ? 'running'
-              : step.status
-
-            return {
-              ...step,
-              status,
-              data: backendStep.result,
-              timestamp: backendStep.timestamp
-            }
-          }
-          return step
-        })
-      )
-    }
-  }, [investigationData])
-
-  // Initialize progress steps
-  const initializeProgress = () => {
-    setProgressSteps([
-      { phase: 'upload_and_parse', status: 'pending' },
-      { phase: 'reverse_image_search', status: 'pending' },
-      { phase: 'tiger_detection', status: 'pending' },
-      { phase: 'stripe_analysis', status: 'pending' },
-      { phase: 'omnivinci_comparison', status: 'pending' },
-      { phase: 'report_generation', status: 'pending' },
-      { phase: 'complete', status: 'pending' }
-    ])
-  }
-
-  // WebSocket connection
-  useEffect(() => {
-    if (!investigationId) return
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/investigations2/ws/${investigationId}`
-    
-    const ws = new WebSocket(wsUrl)
-
-    ws.onopen = () => {
-      console.log('WebSocket connected')
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        console.log('WebSocket message:', message)
-
-        if (message.event === 'phase_started') {
-          updateProgressStep(message.data.phase, 'running', message.data)
-        } else if (message.event === 'phase_completed') {
-          updateProgressStep(message.data.phase, 'completed', message.data)
-        } else if (message.event === 'investigation_completed') {
-          updateProgressStep('complete', 'completed', message.data)
-        }
-      } catch (err) {
-        console.error('Error parsing WebSocket message:', err)
-      }
-    }
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error)
-    }
-
-    ws.onclose = () => {
-      console.log('WebSocket disconnected')
-    }
-
-    setWebsocket(ws)
-
-    // Ping interval to keep connection alive
-    const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send('ping')
-      }
-    }, 30000)
-
-    return () => {
-      clearInterval(pingInterval)
-      ws.close()
-    }
-  }, [investigationId])
-
-  const updateProgressStep = (phase: string, status: ProgressStep['status'], data?: any) => {
-    setProgressSteps(prev => 
-      prev.map(step => 
-        step.phase === phase 
-          ? { ...step, status, timestamp: new Date().toISOString(), data }
-          : step
-      )
-    )
-  }
-
-  const handleImageUpload = (file: File) => {
-    setUploadedImage(file)
-    
-    // Create preview
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string)
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const handleContextChange = (field: string, value: string) => {
-    setContext(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
-
-  const handleLaunch = async () => {
-    if (!uploadedImage) {
-      setError('Please upload a tiger image')
-      return
-    }
-
-    setError(null)
-    initializeProgress()
-
-    try {
-      const formData = new FormData()
-      formData.append('image', uploadedImage)
-      if (context.location) formData.append('location', context.location)
-      if (context.date) formData.append('date', context.date)
-      if (context.notes) formData.append('notes', context.notes)
-
-      const result = await launchInvestigation(formData).unwrap()
-      
-      if (result.success) {
-        setInvestigationId(result.investigation_id)
-      } else {
-        setError('Failed to launch investigation')
-      }
-    } catch (err: any) {
-      setError(err.data?.detail || 'Failed to launch investigation')
-      console.error('Launch error:', err)
-    }
-  }
-
-  const handleReset = () => {
-    setInvestigationId(null)
-    setUploadedImage(null)
-    setImagePreview(null)
-    setContext({ location: '', date: '', notes: '' })
-    setProgressSteps([])
-    setError(null)
-    if (websocket) {
-      websocket.close()
-    }
-  }
-
-  const _isInProgress = investigationId && investigationData?.status &&
-    !investigationData.status.includes('complete') &&
-    investigationData.status !== 'completed'
-  void _isInProgress // Reserved for showing loading state
-  
-  const isCompleted = investigationData?.status === 'completed' || 
-    investigationData?.status?.includes('completed') ||
-    (investigationData?.steps && investigationData.steps.some((s: any) => 
-      s.step_type === 'complete' && s.status === 'completed'
-    ))
+  const {
+    investigationId,
+    investigation,
+    progressSteps,
+    isLaunching,
+    uploadedImage,
+    error,
+    isCompleted,
+    wsConnected,
+    launchInvestigation,
+    resetInvestigation,
+    regenerateReport,
+  } = useInvestigation2()
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -243,11 +53,26 @@ const Investigation2 = () => {
             </p>
           </div>
         </div>
-        {investigationId && (
-          <Button variant="secondary" size="sm" onClick={handleReset}>
-            New Investigation
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* WebSocket Status Indicator */}
+          {investigationId && (
+            <div className="flex items-center gap-2 text-sm">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  wsConnected ? 'bg-green-500' : 'bg-red-500'
+                }`}
+              />
+              <span className="text-gray-500">
+                {wsConnected ? 'Live' : 'Connecting...'}
+              </span>
+            </div>
+          )}
+          {investigationId && (
+            <Button variant="secondary" size="sm" onClick={resetInvestigation}>
+              New Investigation
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Error Alert */}
@@ -255,55 +80,56 @@ const Investigation2 = () => {
         <Alert type="error" message={error} className="mb-6" />
       )}
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column - Upload & Context */}
-        <div>
-          <Investigation2Upload
-            image={uploadedImage}
-            imagePreview={imagePreview}
-            context={context}
-            onImageUpload={handleImageUpload}
-            onContextChange={handleContextChange}
-            disabled={!!investigationId || isLaunching}
-          />
+      {/* Main Content - Responsive Layout */}
+      <InvestigationLayout
+        hasImage={!!uploadedImage}
+        isComplete={isCompleted}
+        uploadPanel={
+          <div data-testid="upload-panel">
+            <Investigation2Upload />
 
-          {!investigationId && (
-            <div className="mt-6">
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={handleLaunch}
-                disabled={!uploadedImage || isLaunching}
-                className="w-full"
-              >
-                {isLaunching ? 'Launching...' : 'Launch Investigation'}
-              </Button>
+            {!investigationId && (
+              <div className="mt-6">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={launchInvestigation}
+                  disabled={!uploadedImage || isLaunching}
+                  className="w-full"
+                  data-testid="launch-investigation-btn"
+                >
+                  {isLaunching ? 'Launching...' : 'Launch Investigation'}
+                </Button>
+              </div>
+            )}
+          </div>
+        }
+        progressPanel={
+          (investigationId || progressSteps.length > 0) ? (
+            <Investigation2Progress />
+          ) : (
+            <div
+              className="flex items-center justify-center h-64 rounded-xl border-2 border-dashed border-tactical-200 dark:border-tactical-700"
+              data-testid="progress-placeholder"
+            >
+              <p className="text-tactical-500 dark:text-tactical-400 text-center px-4">
+                Upload an image and launch the investigation to see progress
+              </p>
             </div>
-          )}
-        </div>
-
-        {/* Right Column - Progress & Results */}
-        <div>
-          {(investigationId || progressSteps.length > 0) && (
-            <Investigation2Progress
-              steps={progressSteps}
-              investigationId={investigationId}
+          )
+        }
+        resultsPanel={
+          isCompleted && investigation ? (
+            <Investigation2ResultsEnhanced
+              investigation={investigation}
+              onRegenerateReport={regenerateReport}
             />
-          )}
-
-          {isCompleted && investigationData && (
-            <div className="mt-6">
-              <Investigation2ResultsEnhanced
-                investigation={investigationData}
-              />
-            </div>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* Full Width Results */}
-      {isCompleted && investigationData && (
+      {isCompleted && investigation && (
         <div className="mt-8">
           <Card>
             <div className="p-6">
@@ -312,26 +138,28 @@ const Investigation2 = () => {
                 <Badge color="green">Completed</Badge>
               </div>
               <Investigation2ResultsEnhanced
-                investigation={investigationData}
+                investigation={investigation}
                 fullWidth
+                onRegenerateReport={regenerateReport}
               />
             </div>
           </Card>
         </div>
       )}
-      
-      {/* Debug Info (temporary) */}
-      {investigationData && (
+
+      {/* Debug Info (development only) */}
+      {import.meta.env.DEV && investigation && (
         <div className="mt-4 text-xs text-gray-500">
           <details>
             <summary className="cursor-pointer hover:text-gray-700">Debug Info</summary>
             <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto max-h-40">
               {JSON.stringify({
-                status: investigationData.status,
-                steps: investigationData.steps?.length || 0,
-                hasSteps: !!investigationData.steps,
-                hasSummary: !!investigationData.summary,
-                isCompleted: isCompleted
+                status: investigation.status,
+                steps: investigation.steps?.length || 0,
+                hasSteps: !!investigation.steps,
+                hasSummary: !!investigation.summary,
+                isCompleted: isCompleted,
+                wsConnected: wsConnected,
               }, null, 2)}
             </pre>
           </details>
@@ -341,5 +169,16 @@ const Investigation2 = () => {
   )
 }
 
-export default Investigation2
+/**
+ * Investigation 2.0 page component.
+ * Wraps the content in the Investigation2Provider for state management.
+ */
+const Investigation2 = () => {
+  return (
+    <Investigation2Provider>
+      <Investigation2Content />
+    </Investigation2Provider>
+  )
+}
 
+export default Investigation2
