@@ -15,24 +15,32 @@ class TestAnalyticsService:
         """Test getting investigation analytics"""
         service = AnalyticsService(db_session)
         from backend.services.investigation_service import InvestigationService
-        
+
         # Create investigations
         inv_service = InvestigationService(db_session)
-        inv_service.create_investigation(
+        inv1 = inv_service.create_investigation(
             title="Investigation 1",
             created_by=sample_user_id,
-            status="active",
             priority="high"
         )
-        inv_service.create_investigation(
+        # Update status after creation
+        inv1_updated = inv_service.update_investigation(inv1.investigation_id, status="active")
+        assert inv1_updated is not None
+
+        inv2 = inv_service.create_investigation(
             title="Investigation 2",
             created_by=sample_user_id,
-            status="completed",
             priority="medium"
         )
-        
+        # Update status after creation
+        inv2_updated = inv_service.update_investigation(inv2.investigation_id, status="completed")
+        assert inv2_updated is not None
+
+        # Refresh the session to ensure updates are visible
+        db_session.expire_all()
+
         analytics = service.get_investigation_analytics(user_id=sample_user_id)
-        
+
         assert "total_investigations" in analytics
         assert "status_distribution" in analytics
         assert "priority_distribution" in analytics
@@ -92,17 +100,20 @@ class TestAnalyticsService:
         """Test getting facility analytics"""
         service = AnalyticsService(db_session)
         from backend.services.facility_service import FacilityService
-        
+        import json
+
         facility_service = FacilityService(db_session)
         facility_service.create_facility(
             exhibitor_name="Facility 1",
             state="CA",
-            tiger_count=5
+            tiger_count=5,
+            social_media_links=None  # Pass None instead of dict for SQLite compatibility
         )
         facility_service.create_facility(
             exhibitor_name="Facility 2",
             state="NY",
-            tiger_count=10
+            tiger_count=10,
+            social_media_links=None  # Pass None instead of dict for SQLite compatibility
         )
         
         analytics = service.get_facility_analytics()
@@ -111,12 +122,36 @@ class TestAnalyticsService:
         assert "state_distribution" in analytics
         assert analytics["total_facilities"] >= 2
     
-    def test_get_user_activity_analytics(self, db_session, sample_user_id):
-        """Test getting user activity analytics"""
+    def test_get_agent_performance_analytics(self, db_session, sample_user_id):
+        """Test getting agent performance analytics"""
         service = AnalyticsService(db_session)
-        
-        analytics = service.get_user_activity_analytics(user_id=sample_user_id)
-        
+        from backend.services.investigation_service import InvestigationService
+
+        # Create investigation with steps
+        inv_service = InvestigationService(db_session)
+        inv = inv_service.create_investigation(
+            title="Test Investigation",
+            created_by=sample_user_id
+        )
+
+        # Add investigation steps
+        inv_service.add_investigation_step(
+            investigation_id=inv.investigation_id,
+            step_type="research",
+            agent_name="deep_research",
+            status="completed"
+        )
+        inv_service.add_investigation_step(
+            investigation_id=inv.investigation_id,
+            step_type="analysis",
+            agent_name="sequential_thinking",
+            status="completed"
+        )
+
+        analytics = service.get_agent_performance_analytics(investigation_id=inv.investigation_id)
+
         assert isinstance(analytics, dict)
-        # Should return analytics even if empty
+        assert "total_steps" in analytics
+        assert "agent_activity" in analytics
+        assert analytics["total_steps"] >= 2
 

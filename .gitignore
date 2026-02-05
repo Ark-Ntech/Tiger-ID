@@ -113,3 +113,9 @@ deploy.log
 
 # Windows artifacts
 nul
+# SQLite temporary files
+*.db-shm
+*.db-wal
+
+# Test results
+results/

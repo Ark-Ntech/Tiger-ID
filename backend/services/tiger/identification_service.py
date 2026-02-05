@@ -5,6 +5,7 @@ Handles tiger identification from images using various ReID models.
 
 from typing import Dict, Any, Optional, List
 from uuid import UUID
+import asyncio
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
 from PIL import Image
@@ -15,10 +16,13 @@ from backend.config.settings import get_settings
 from backend.database.vector_search import find_matching_tigers
 from backend.models.detection import TigerDetectionModel
 from backend.models.interfaces.base_reid_model import BaseReIDModel
+from backend.services.tiger.model_loader import get_model_loader
 from backend.services.tiger.ensemble_strategy import (
     EnsembleStrategy,
     StaggeredEnsembleStrategy,
     ParallelEnsembleStrategy,
+    WeightedEnsembleStrategy,
+    VerifiedEnsembleStrategy,
 )
 from backend.services.model_inference_logger import get_inference_logger
 from backend.services.model_cache_service import get_cache_service
@@ -48,52 +52,15 @@ class TigerIdentificationService:
         self.inference_logger = get_inference_logger()
         self.cache_service = get_cache_service()
 
-        # Initialize available models lazily
-        self._available_models: Dict[str, type] = {}
-        self._model_instances: Dict[str, BaseReIDModel] = {}
-        self._initialize_available_models()
+        # Use centralized ModelLoader for model management
+        self._model_loader = get_model_loader()
 
         # Ensemble settings
         self._ensemble_mode: Optional[str] = None
 
-    def _initialize_available_models(self):
-        """Initialize available RE-ID models."""
-        from backend.models.reid import TigerReIDModel
-
-        self._available_models = {
-            'tiger_reid': TigerReIDModel
-        }
-
-        # Import other models
-        try:
-            from backend.models.wildlife_tools import WildlifeToolsReIDModel
-            self._available_models['wildlife_tools'] = WildlifeToolsReIDModel
-            logger.info("WildlifeTools model available (Modal)")
-        except ImportError as e:
-            logger.debug(f"WildlifeToolsReIDModel not available: {e}")
-
-        try:
-            from backend.models.cvwc2019_reid import CVWC2019ReIDModel
-            self._available_models['cvwc2019'] = CVWC2019ReIDModel
-            logger.info("CVWC2019 model available (Modal)")
-        except ImportError as e:
-            logger.debug(f"CVWC2019ReIDModel not available: {e}")
-
-        try:
-            from backend.models.rapid_reid import RAPIDReIDModel
-            self._available_models['rapid'] = RAPIDReIDModel
-            logger.info("RAPID model available (Modal)")
-        except ImportError as e:
-            logger.debug(f"RAPIDReIDModel not available: {e}")
-
-        logger.info(
-            f"Initialized {len(self._available_models)} Modal-powered models: "
-            f"{list(self._available_models.keys())}"
-        )
-
     def get_available_models(self) -> List[str]:
         """Get list of available model names."""
-        return list(self._available_models.keys())
+        return self._model_loader.get_available_model_names()
 
     def _get_model(self, model_name: Optional[str] = None) -> BaseReIDModel:
         """Get model instance by name.
@@ -107,37 +74,19 @@ class TigerIdentificationService:
         Raises:
             ValueError: If model name is not available
         """
-        if model_name is None:
-            model_name = 'wildlife_tools'  # Default model
-
-        if model_name not in self._available_models:
-            raise ValueError(
-                f"Model '{model_name}' not available. "
-                f"Available: {self.get_available_models()}"
-            )
-
-        # Create instance if not cached
-        if model_name not in self._model_instances:
-            model_class = self._available_models[model_name]
-            self._model_instances[model_name] = model_class()
-
-        return self._model_instances[model_name]
+        return self._model_loader.get_model(model_name)
 
     def _get_all_model_instances(self) -> Dict[str, BaseReIDModel]:
         """Get dictionary of all available model instances."""
-        for model_name in self._available_models:
-            if model_name not in self._model_instances:
-                model_class = self._available_models[model_name]
-                self._model_instances[model_name] = model_class()
-        return self._model_instances
+        return self._model_loader.get_all_model_instances()
 
     def set_ensemble_mode(self, mode: Optional[str]):
         """Set the ensemble mode for identification.
 
         Args:
-            mode: 'staggered', 'parallel', or None for single model
+            mode: 'staggered', 'parallel', 'weighted', 'verified', or None for single model
         """
-        if mode and mode not in ['staggered', 'parallel']:
+        if mode and mode not in ['staggered', 'parallel', 'weighted', 'verified']:
             raise ValueError(f"Invalid ensemble mode: {mode}")
         self._ensemble_mode = mode
 
@@ -185,14 +134,43 @@ class TigerIdentificationService:
         tiger_crop = detection_result["detections"][0].get("crop")
 
         # Convert crop to bytes if it's a PIL Image
+        # Use run_in_executor to avoid blocking the event loop
         if hasattr(tiger_crop, 'save'):
-            buffer = io.BytesIO()
-            tiger_crop.save(buffer, format='JPEG')
-            tiger_crop = buffer.getvalue()
+            def _save_image_to_bytes(img):
+                buffer = io.BytesIO()
+                img.save(buffer, format='JPEG')
+                return buffer.getvalue()
+
+            loop = asyncio.get_event_loop()
+            tiger_crop = await loop.run_in_executor(None, _save_image_to_bytes, tiger_crop)
 
         # Choose identification strategy
         if self._ensemble_mode == 'staggered':
             strategy = StaggeredEnsembleStrategy()
+            models = self._get_all_model_instances()
+            return await strategy.identify(
+                tiger_crop, models, self.db, similarity_threshold, user_id
+            )
+
+        elif self._ensemble_mode == 'weighted':
+            # Use weighted ensemble with calibration and re-ranking
+            strategy = WeightedEnsembleStrategy(
+                use_reranking=True,
+                use_calibration=True
+            )
+            models = self._get_all_model_instances()
+            return await strategy.identify(
+                tiger_crop, models, self.db, similarity_threshold, user_id
+            )
+
+        elif self._ensemble_mode == 'verified':
+            # Use verified ensemble with MatchAnything geometric verification
+            strategy = VerifiedEnsembleStrategy(
+                use_reranking=True,
+                use_calibration=True,
+                use_verification=True,
+                use_adaptive_weights=True
+            )
             models = self._get_all_model_instances()
             return await strategy.identify(
                 tiger_crop, models, self.db, similarity_threshold, user_id

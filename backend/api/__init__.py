@@ -19,8 +19,31 @@ def get_integration_router():
 # Import app creation
 from backend.api.app import create_app, app
 
+# Import error classes for easy access
+from backend.api.error_handlers import (
+    APIError,
+    NotFoundError,
+    ValidationError,
+    AuthenticationError,
+    AuthorizationError,
+    ConflictError,
+    RateLimitError,
+    ServiceUnavailableError,
+    BadRequestError,
+)
+
 __all__ = [
     "get_integration_router",
     "create_app",
     "app",
+    # Error classes
+    "APIError",
+    "NotFoundError",
+    "ValidationError",
+    "AuthenticationError",
+    "AuthorizationError",
+    "ConflictError",
+    "RateLimitError",
+    "ServiceUnavailableError",
+    "BadRequestError",
 ]

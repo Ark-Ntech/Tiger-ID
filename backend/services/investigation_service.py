@@ -1,22 +1,37 @@
-"""Service layer for Investigation operations"""
+"""Service layer for Investigation operations.
+
+This service uses InvestigationRepository for all database operations,
+following the repository pattern for clean separation of concerns.
+"""
 
 from typing import List, Optional, Dict, Any, Tuple
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
 from backend.database.models import (
-    Investigation, InvestigationStep, Evidence, 
-    VerificationQueue, InvestigationComment
+    Investigation, InvestigationStep, Evidence,
+    VerificationQueue, InvestigationComment,
+    InvestigationStatus, Priority
 )
+from backend.repositories.investigation_repository import InvestigationRepository
 
 
 class InvestigationService:
-    """Service for investigation-related operations"""
-    
+    """Service for investigation-related operations.
+
+    Uses InvestigationRepository for all database access, keeping the service
+    layer focused on business logic.
+    """
+
     def __init__(self, session: Session):
+        """Initialize service with database session and repository.
+
+        Args:
+            session: SQLAlchemy database session
+        """
         self.session = session
+        self.investigation_repo = InvestigationRepository(session)
     
     def create_investigation(
         self,
@@ -27,26 +42,45 @@ class InvestigationService:
         tags: Optional[List[str]] = None,
         assigned_to: Optional[List[UUID]] = None
     ) -> Investigation:
-        """Create a new investigation"""
+        """Create a new investigation.
+
+        Args:
+            title: Title of the investigation
+            created_by: UUID of the creating user
+            description: Optional description
+            priority: Priority level (low, medium, high, critical)
+            tags: Optional list of tags
+            assigned_to: Optional list of assigned user UUIDs
+
+        Returns:
+            Created Investigation object
+        """
+        # Pass native Python objects - JSONList/JSONDict TypeDecorators handle serialization
         investigation = Investigation(
             title=title,
             description=description,
-            created_by=created_by,
+            created_by=str(created_by),
             status="draft",
             priority=priority,
             tags=tags or [],
-            assigned_to=[str(uuid) for uuid in (assigned_to or [])]
+            assigned_to=[str(uuid) for uuid in (assigned_to or [])],
+            related_tigers=[],
+            related_facilities=[],
+            methodology=[],
+            summary={}
         )
-        self.session.add(investigation)
-        self.session.commit()
-        self.session.refresh(investigation)
-        return investigation
+        return self.investigation_repo.create(investigation)
     
     def get_investigation(self, investigation_id: UUID) -> Optional[Investigation]:
-        """Get investigation by ID"""
-        return self.session.query(Investigation).filter(
-            Investigation.investigation_id == investigation_id
-        ).first()
+        """Get investigation by ID.
+
+        Args:
+            investigation_id: UUID of the investigation
+
+        Returns:
+            Investigation if found, None otherwise
+        """
+        return self.investigation_repo.get_by_id(investigation_id)
     
     def get_investigations(
         self,
@@ -57,120 +91,191 @@ class InvestigationService:
         limit: int = 100,
         offset: int = 0
     ) -> List[Investigation]:
-        """Get list of investigations with filters"""
-        query = self.session.query(Investigation)
-        
+        """Get list of investigations with filters.
+
+        Args:
+            status: Optional status filter
+            created_by: Optional creator UUID filter
+            assigned_to: Optional assignee UUID filter
+            priority: Optional priority filter
+            limit: Maximum results to return
+            offset: Number of results to skip
+
+        Returns:
+            List of matching Investigation objects
+        """
+        # Use repository paginated method with filters
+        page = (offset // limit) + 1 if limit > 0 else 1
+
+        # Convert string status/priority to enums if provided
+        status_enum = None
+        priority_enum = None
+
         if status:
-            query = query.filter(Investigation.status == status)
-        
-        if created_by:
-            query = query.filter(Investigation.created_by == created_by)
-        
-        if assigned_to:
-            query = query.filter(
-                Investigation.assigned_to.contains([str(assigned_to)])
-            )
-        
+            try:
+                status_enum = InvestigationStatus(status)
+            except ValueError:
+                pass
+
         if priority:
-            query = query.filter(Investigation.priority == priority)
-        
-        return query.order_by(Investigation.created_at.desc()).limit(limit).offset(offset).all()
+            try:
+                priority_enum = Priority(priority)
+            except ValueError:
+                pass
+
+        result = self.investigation_repo.get_paginated_with_filters(
+            page=page,
+            page_size=limit,
+            status=status_enum,
+            priority=priority_enum,
+            created_by=created_by
+        )
+
+        # Note: assigned_to filtering with JSON contains is complex,
+        # handled separately if needed
+        investigations = result.items
+
+        if assigned_to:
+            assigned_to_str = str(assigned_to)
+            investigations = [
+                inv for inv in investigations
+                if inv.assigned_to and assigned_to_str in str(inv.assigned_to)
+            ]
+
+        return investigations
     
     def update_investigation(
         self,
         investigation_id: UUID,
         **updates
     ) -> Optional[Investigation]:
-        """Update investigation record"""
-        investigation = self.get_investigation(investigation_id)
+        """Update investigation record.
+
+        Args:
+            investigation_id: UUID of the investigation to update
+            **updates: Key-value pairs of fields to update
+
+        Returns:
+            Updated Investigation or None if not found
+        """
+        investigation = self.investigation_repo.get_by_id(investigation_id)
         if not investigation:
             return None
-        
+
         for key, value in updates.items():
             if hasattr(investigation, key):
                 setattr(investigation, key, value)
-        
-        self.session.commit()
-        self.session.refresh(investigation)
-        return investigation
+
+        return self.investigation_repo.update(investigation)
     
     def start_investigation(self, investigation_id: UUID) -> Optional[Investigation]:
-        """Start an investigation"""
-        investigation = self.get_investigation(investigation_id)
-        if not investigation:
-            return None
-        
-        investigation.status = "active"
-        investigation.started_at = datetime.utcnow()
-        self.session.commit()
-        self.session.refresh(investigation)
-        return investigation
-    
+        """Start an investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+
+        Returns:
+            Updated Investigation or None if not found
+        """
+        return self.investigation_repo.update_status(
+            investigation_id,
+            InvestigationStatus.active
+        )
+
     def pause_investigation(self, investigation_id: UUID) -> Optional[Investigation]:
-        """Pause an investigation"""
-        investigation = self.get_investigation(investigation_id)
+        """Pause an investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+
+        Returns:
+            Updated Investigation or None if not found
+
+        Raises:
+            ValueError: If investigation cannot be paused from current status
+        """
+        investigation = self.investigation_repo.get_by_id(investigation_id)
         if not investigation:
             return None
-        
+
         if investigation.status not in ["active", "in_progress"]:
             raise ValueError(f"Cannot pause investigation with status: {investigation.status}")
-        
+
         investigation.status = "paused"
-        self.session.commit()
-        self.session.refresh(investigation)
-        return investigation
-    
+        return self.investigation_repo.update(investigation)
+
     def resume_investigation(self, investigation_id: UUID) -> Optional[Investigation]:
-        """Resume a paused investigation"""
-        investigation = self.get_investigation(investigation_id)
+        """Resume a paused investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+
+        Returns:
+            Updated Investigation or None if not found
+
+        Raises:
+            ValueError: If investigation is not paused
+        """
+        investigation = self.investigation_repo.get_by_id(investigation_id)
         if not investigation:
             return None
-        
+
         if investigation.status != "paused":
             raise ValueError(f"Cannot resume investigation with status: {investigation.status}")
-        
+
         investigation.status = "in_progress"
-        self.session.commit()
-        self.session.refresh(investigation)
-        return investigation
-    
-    def cancel_investigation(self, investigation_id: UUID, reason: Optional[str] = None) -> Optional[Investigation]:
-        """Cancel an investigation"""
-        investigation = self.get_investigation(investigation_id)
+        return self.investigation_repo.update(investigation)
+
+    def cancel_investigation(
+        self,
+        investigation_id: UUID,
+        reason: Optional[str] = None
+    ) -> Optional[Investigation]:
+        """Cancel an investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+            reason: Optional cancellation reason
+
+        Returns:
+            Updated Investigation or None if not found
+
+        Raises:
+            ValueError: If investigation cannot be cancelled from current status
+        """
+        investigation = self.investigation_repo.get_by_id(investigation_id)
         if not investigation:
             return None
-        
+
         if investigation.status in ["completed", "cancelled"]:
             raise ValueError(f"Cannot cancel investigation with status: {investigation.status}")
-        
+
         investigation.status = "cancelled"
         if reason:
             if not investigation.summary:
                 investigation.summary = {}
             investigation.summary["cancellation_reason"] = reason
-        
-        self.session.commit()
-        self.session.refresh(investigation)
-        return investigation
-    
+
+        return self.investigation_repo.update(investigation)
+
     def complete_investigation(
         self,
         investigation_id: UUID,
         summary: Optional[Dict[str, Any]] = None
     ) -> Optional[Investigation]:
-        """Complete an investigation"""
-        investigation = self.get_investigation(investigation_id)
-        if not investigation:
-            return None
-        
-        investigation.status = "completed"
-        investigation.completed_at = datetime.utcnow()
-        if summary:
-            investigation.summary = summary
-        
-        self.session.commit()
-        self.session.refresh(investigation)
-        return investigation
+        """Complete an investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+            summary: Optional summary dict to store
+
+        Returns:
+            Updated Investigation or None if not found
+        """
+        return self.investigation_repo.update_status(
+            investigation_id,
+            InvestigationStatus.completed
+        )
     
     def add_investigation_step(
         self,
@@ -181,20 +286,30 @@ class InvestigationService:
         result: Optional[Dict[str, Any]] = None,
         parent_step_id: Optional[UUID] = None
     ) -> InvestigationStep:
-        """Add a step to an investigation"""
+        """Add a step to an investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+            step_type: Type of step
+            agent_name: Optional agent name
+            status: Step status (default pending)
+            result: Optional result dict
+            parent_step_id: Optional parent step UUID
+
+        Returns:
+            Created InvestigationStep object
+        """
+        # Pass native Python objects - JSONDict TypeDecorator handles serialization
         step = InvestigationStep(
-            investigation_id=investigation_id,
+            investigation_id=str(investigation_id),
             step_type=step_type,
             agent_name=agent_name,
             status=status,
             result=result or {},
-            parent_step_id=parent_step_id
+            parent_step_id=str(parent_step_id) if parent_step_id else None
         )
-        self.session.add(step)
-        self.session.commit()
-        self.session.refresh(step)
-        return step
-    
+        return self.investigation_repo.add_step(step)
+
     def add_evidence(
         self,
         investigation_id: UUID,
@@ -204,31 +319,51 @@ class InvestigationService:
         extracted_text: Optional[str] = None,
         relevance_score: Optional[float] = None
     ) -> Evidence:
-        """Add evidence to an investigation"""
+        """Add evidence to an investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+            source_type: Type of evidence source
+            source_url: Optional source URL
+            content: Optional content dict
+            extracted_text: Optional extracted text
+            relevance_score: Optional relevance score
+
+        Returns:
+            Created Evidence object
+        """
+        # Pass native Python objects - JSONDict TypeDecorator handles serialization
         evidence = Evidence(
-            investigation_id=investigation_id,
+            investigation_id=str(investigation_id),
             source_type=source_type,
             source_url=source_url,
             content=content or {},
             extracted_text=extracted_text,
             relevance_score=relevance_score
         )
-        self.session.add(evidence)
-        self.session.commit()
-        self.session.refresh(evidence)
-        return evidence
-    
+        return self.investigation_repo.add_evidence(evidence)
+
     def get_investigation_steps(self, investigation_id: UUID) -> List[InvestigationStep]:
-        """Get all steps for an investigation"""
-        return self.session.query(InvestigationStep).filter(
-            InvestigationStep.investigation_id == investigation_id
-        ).order_by(InvestigationStep.timestamp).all()
-    
+        """Get all steps for an investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+
+        Returns:
+            List of InvestigationStep objects ordered by timestamp
+        """
+        return self.investigation_repo.get_steps(investigation_id)
+
     def get_investigation_evidence(self, investigation_id: UUID) -> List[Evidence]:
-        """Get all evidence for an investigation"""
-        return self.session.query(Evidence).filter(
-            Evidence.investigation_id == investigation_id
-        ).order_by(Evidence.created_at).all()
+        """Get all evidence for an investigation.
+
+        Args:
+            investigation_id: UUID of the investigation
+
+        Returns:
+            List of Evidence objects
+        """
+        return self.investigation_repo.get_evidence(investigation_id)
     
     def _save_investigation_state(
         self,
@@ -236,24 +371,37 @@ class InvestigationService:
         current_phase: str,
         state_data: Dict[str, Any]
     ):
-        """Save investigation state for pause/resume"""
-        investigation = self.get_investigation(investigation_id)
+        """Save investigation state for pause/resume.
+
+        Args:
+            investigation_id: UUID of the investigation
+            current_phase: Current workflow phase
+            state_data: State data to save
+        """
+        investigation = self.investigation_repo.get_by_id(investigation_id)
         if not investigation:
             return
-        
+
         if not investigation.summary:
             investigation.summary = {}
-        
+
         investigation.summary['_state'] = {
             'phase': current_phase,
             'data': state_data,
             'timestamp': datetime.utcnow().isoformat()
         }
-        self.session.commit()
-    
+        self.investigation_repo.update(investigation)
+
     def _load_investigation_state(self, investigation_id: UUID) -> Optional[Dict[str, Any]]:
-        """Load saved investigation state"""
-        investigation = self.get_investigation(investigation_id)
+        """Load saved investigation state.
+
+        Args:
+            investigation_id: UUID of the investigation
+
+        Returns:
+            Saved state dict or None
+        """
+        investigation = self.investigation_repo.get_by_id(investigation_id)
         if investigation and investigation.summary and isinstance(investigation.summary, dict):
             return investigation.summary.get('_state')
         return None
@@ -316,9 +464,8 @@ class InvestigationService:
         selected_tools: Optional[List[str]] = None,
         tiger_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Launch an investigation with user input and files using the OpenAI chat orchestrator (or OmniVinci for video)"""
+        """Launch an investigation with user input and files using the chat orchestrator"""
         from backend.models.hermes_chat import get_hermes_chat_model
-        from backend.models.omnivinci import get_omnivinci_model
         from backend.api.mcp_tools_routes import list_mcp_tools
         from backend.database import get_db_session
         from backend.utils.logging import get_logger
@@ -473,7 +620,7 @@ class InvestigationService:
             tiger_event_payload["images"] = tiger_image_urls
         
         try:
-            # Get available tools for OpenAI chat / OmniVinci
+            # Get available tools for chat orchestrator
             # Use next() to get session from generator
             session = next(get_db_session())
             try:
@@ -508,51 +655,10 @@ class InvestigationService:
             finally:
                 session.close()
             
-            # Check if we have video content
-            has_video = video_path and video_path.exists()
-            
-            if has_video:
-                # Use OmniVinci for video analysis (its true purpose)
-                logger.info(f"Using OmniVinci for video analysis: {video_path}")
-                omnivinci_model = get_omnivinci_model()
-                
-                # Create tool callback URL for OmniVinci to call back when it wants to use tools
-                tool_callback_url = f"http://localhost:8000/api/v1/investigations/{investigation_id}/tool-callback"
-                
-                # Prepare prompt for OmniVinci (video analysis)
-                prompt = f"""Analyze this video for tiger conservation investigation purposes.
+            # Note: Video analysis was previously handled by OmniVinci but has been removed
+            # Video files are now processed using the standard investigation workflow
 
-User request: {user_input}
-
-Available Tools (you can request these if needed):
-{chr(10).join([f"- {tool.get('name', '')}: {tool.get('description', '')}" for tool in all_tools[:10]])}
-
-Provide a detailed analysis of the video content, identifying any tigers, their behavior, environment, and any relevant conservation concerns."""
-                
-                result = await omnivinci_model.analyze_video(
-                    video_path,
-                    prompt,
-                    all_tools,
-                    tool_callback_url
-                )
-                
-                # Extract response from OmniVinci
-                if result.get("success"):
-                    analysis = result.get("analysis", "")
-                    tool_requests = result.get("tool_requests", [])
-                    if tool_requests:
-                        logger.info(f"OmniVinci requested {len(tool_requests)} tools")
-                        analysis += f"\n\n[Note: {len(tool_requests)} tool(s) were requested for execution]"
-                    response_message = analysis
-                else:
-                    error_msg = result.get("error", "Unknown error")
-                    logger.error(f"OmniVinci video analysis failed: {error_msg}")
-                    response_message = f"Video analysis error: {error_msg}"
-                    
-                step_type = "omnivinci_video_analysis"
-                agent_name = "omnivinci"
-                
-            elif request_type == 'investigation':
+            if request_type == 'investigation':
                 # Use Orchestrator for full investigation workflow
                 logger.info("Using Orchestrator for full investigation workflow")
                 from backend.agents import OrchestratorAgent

@@ -2,6 +2,7 @@
 
 from typing import Optional
 from pathlib import Path
+from enum import Enum
 import os
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,35 +10,28 @@ from pydantic import Field, ValidationError, model_validator
 
 
 class DatabaseSettings(BaseSettings):
-    """Database configuration"""
-    url: str = Field(default="postgresql://tiger_user:tiger_password@localhost:5432/tiger_investigation", alias="DATABASE_URL")
-    pool_size: int = Field(default=10, alias="DB_POOL_SIZE")
-    max_overflow: int = Field(default=20, alias="DB_MAX_OVERFLOW")
+    """Database configuration - SQLite only with sqlite-vec for vector search"""
+    url: str = Field(default="sqlite:///data/tiger_id.db", alias="DATABASE_URL")
     echo: bool = False
-    
+
     @model_validator(mode='after')
     def validate_database_url(self):
-        # Allow SQLite for demo mode
-        if not self.url.startswith(('postgresql://', 'postgresql+psycopg2://', 'sqlite://')):
-            raise ValueError('DATABASE_URL must start with postgresql://, postgresql+psycopg2://, or sqlite://')
+        # SQLite only
+        if not self.url.startswith('sqlite://'):
+            raise ValueError(
+                'DATABASE_URL must be a SQLite connection string (sqlite:///path/to/db). '
+                'PostgreSQL is no longer supported - use SQLite with sqlite-vec for vector search.'
+            )
+
+        # Verify sqlite-vec is available
+        try:
+            import sqlite_vec
+        except ImportError:
+            raise ValueError(
+                'sqlite-vec extension is required for vector search. '
+                'Install with: pip install sqlite-vec'
+            )
         return self
-
-
-class RedisSettings(BaseSettings):
-    """Redis configuration"""
-    url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
-    decode_responses: bool = True
-
-
-class CelerySettings(BaseSettings):
-    """Celery configuration"""
-    broker_url: str = Field(default="redis://localhost:6379/0", alias="CELERY_BROKER_URL")
-    result_backend: str = Field(default="redis://localhost:6379/0", alias="CELERY_RESULT_BACKEND")
-    task_serializer: str = "json"
-    result_serializer: str = "json"
-    accept_content: list = ["json"]
-    timezone: str = "UTC"
-    enable_utc: bool = True
 
 
 class StorageSettings(BaseSettings):
@@ -84,21 +78,22 @@ class SentrySettings(BaseSettings):
     profiles_sample_rate: float = 0.1
 
 
-class OmniVinciSettings(BaseSettings):
-    """OmniVinci configuration"""
-    api_key: Optional[str] = Field(default=None, alias="OMNIVINCI_API_KEY")
-    api_url: str = "https://api.nvidia.com/v1/models/omnivinci"
-    model_version: str = "latest"
-    max_tokens: int = 4096
-    temperature: float = 0.7
-    # Local model configuration
-    use_local_model: bool = Field(default=False, alias="OMNIVINCI_USE_LOCAL")
-    local_model_path: str = Field(default="./data/models/omnivinci/omnivinci", alias="OMNIVINCI_MODEL_PATH")
-    torch_dtype: str = Field(default="torch.float16", alias="OMNIVINCI_TORCH_DTYPE")
-    device_map: str = Field(default="auto", alias="OMNIVINCI_DEVICE_MAP")
-    num_video_frames: int = Field(default=128, alias="OMNIVINCI_NUM_VIDEO_FRAMES")
-    load_audio_in_video: bool = Field(default=True, alias="OMNIVINCI_LOAD_AUDIO")
-    audio_length: str = Field(default="max_3600", alias="OMNIVINCI_AUDIO_LENGTH")
+class ModalSettings(BaseSettings):
+    """Modal serverless GPU configuration"""
+    enabled: bool = Field(default=True, alias="MODAL_ENABLED")
+    workspace: str = Field(default="ark-ntech", alias="MODAL_WORKSPACE")
+    app_name: str = Field(default="tiger-id-models", alias="MODAL_APP_NAME")
+    max_retries: int = Field(default=3, alias="MODAL_MAX_RETRIES")
+    timeout: int = Field(default=120, alias="MODAL_TIMEOUT")
+    queue_max_size: int = Field(default=100, alias="MODAL_QUEUE_MAX_SIZE")
+    fallback_to_queue: bool = Field(default=True, alias="MODAL_FALLBACK_TO_QUEUE")
+
+    @property
+    def deployment_url(self) -> str:
+        """Get the Modal deployment dashboard URL"""
+        return f"https://modal.com/apps/{self.workspace}/main/deployed/{self.app_name}"
+
+
 
 
 class OpenAISettings(BaseSettings):
@@ -275,6 +270,90 @@ class AutoInvestigationSettings(BaseSettings):
     }
 
 
+class DiscoverySettings(BaseSettings):
+    """Continuous tiger discovery configuration"""
+    enabled: bool = Field(default=False, alias="DISCOVERY_ENABLED")
+    batch_size: int = Field(default=20, alias="DISCOVERY_BATCH_SIZE")
+    interval_hours: int = Field(default=6, alias="DISCOVERY_INTERVAL_HOURS")
+    max_facilities: int = Field(default=50, alias="DISCOVERY_MAX_FACILITIES")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="allow"
+    )
+
+
+# ============================================================================
+# Subagent Pool Configuration
+# ============================================================================
+# Controls concurrent execution limits and timeouts for different subagent types
+
+SUBAGENT_POOLS = {
+    "ml_inference": {
+        "max_concurrent": 6,  # One per ReID model
+        "timeout": 120,       # 2 minutes max
+        "priority": 1,        # Higher priority
+    },
+    "research": {
+        "max_concurrent": 5,
+        "timeout": 60,        # 1 minute max
+        "priority": 2,
+    },
+    "report_generation": {
+        "max_concurrent": 4,  # One per audience type
+        "timeout": 45,
+        "priority": 3,
+    },
+    "image_processing": {
+        "max_concurrent": 3,
+        "timeout": 30,
+        "priority": 1,
+    },
+    "web_crawl": {
+        "max_concurrent": 10,
+        "timeout": 30,
+        "priority": 4,
+    },
+}
+
+# Model-specific configuration for stripe analysis
+REID_MODELS = {
+    "wildlife_tools": {"weight": 0.40, "embedding_dim": 1536, "calibration_temp": 1.0},
+    "cvwc2019_reid": {"weight": 0.30, "embedding_dim": 2048, "calibration_temp": 0.85},
+    "transreid": {"weight": 0.20, "embedding_dim": 768, "calibration_temp": 1.1},
+    "megadescriptor_b": {"weight": 0.15, "embedding_dim": 1024, "calibration_temp": 1.0},
+    "tiger_reid": {"weight": 0.10, "embedding_dim": 2048, "calibration_temp": 0.9},
+    "rapid_reid": {"weight": 0.05, "embedding_dim": 2048, "calibration_temp": 0.95},
+}
+
+# Subagent retry configuration
+SUBAGENT_RETRY_CONFIG = {
+    "max_retries": 3,
+    "retry_delay": 1.0,  # seconds
+    "exponential_backoff": True,
+}
+
+
+def get_subagent_pool_config(pool_name: str) -> dict:
+    """
+    Get configuration for a subagent pool.
+
+    Args:
+        pool_name: Name of the subagent pool (e.g., 'ml_inference', 'research')
+
+    Returns:
+        Dictionary with max_concurrent, timeout, and priority settings.
+        Returns default values if pool_name is not found.
+    """
+    return SUBAGENT_POOLS.get(pool_name, {
+        "max_concurrent": 2,
+        "timeout": 60,
+        "priority": 5,
+    })
+
+
 class ExternalAPISettings(BaseSettings):
     """External API configuration"""
     usda_api_key: Optional[str] = Field(default=None, alias="USDA_API_KEY")
@@ -312,14 +391,12 @@ class AppSettings(BaseSettings):
     
     # Sub-settings
     database: DatabaseSettings = DatabaseSettings()
-    redis: RedisSettings = RedisSettings()
-    celery: CelerySettings = CelerySettings()
     storage: StorageSettings = StorageSettings()
     authentication: AuthenticationSettings = AuthenticationSettings()
     csrf: CSRFSettings = CSRFSettings()
     smtp: SMTPSettings = SMTPSettings()
     sentry: SentrySettings = SentrySettings()
-    omnivinci: OmniVinciSettings = OmniVinciSettings()
+    modal: ModalSettings = ModalSettings()
     openai: OpenAISettings = OpenAISettings()
     gemini: GeminiSettings = GeminiSettings()
     anthropic: AnthropicSettings = AnthropicSettings()
@@ -329,6 +406,7 @@ class AppSettings(BaseSettings):
     models: ModelSettings = ModelSettings()
     datasets: DatasetSettings = DatasetSettings()
     auto_investigation: AutoInvestigationSettings = AutoInvestigationSettings()
+    discovery: DiscoverySettings = DiscoverySettings()
     external_apis: ExternalAPISettings = ExternalAPISettings()
     
     model_config = SettingsConfigDict(

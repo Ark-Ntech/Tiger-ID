@@ -26,38 +26,35 @@ class TestTigerDetectionModel:
     async def test_detect_tiger_in_image(self):
         """Test detecting tiger in image"""
         model = TigerDetectionModel()
-        
+
         # Create mock image
         img = Image.new('RGB', (640, 480), color='red')
         img_bytes = io.BytesIO()
         img.save(img_bytes, format='JPEG')
         img_bytes.seek(0)
         image_bytes = img_bytes.read()
-        
-        # Mock model loading and detection
-        with patch.object(model, 'model') as mock_model:
-            mock_model.return_value = None
-            
-            # Mock detection result
-            detection_result = {
-                "detections": [
-                    {
-                        "bbox": [100, 100, 200, 200],
-                        "confidence": 0.95,
-                        "class": "tiger",
-                        "crop": b"cropped_tiger_image"
-                    }
-                ],
-                "image_size": (640, 480)
-            }
-            
-            with patch.object(model, 'detect', new=AsyncMock(return_value=detection_result)):
-                result = await model.detect(image_bytes)
-                
-                assert result is not None
-                assert "detections" in result
-                assert len(result["detections"]) == 1
-                assert result["detections"][0]["confidence"] == 0.95
+
+        # Mock detection result
+        detection_result = {
+            "detections": [
+                {
+                    "bbox": [100, 100, 200, 200],
+                    "confidence": 0.95,
+                    "class": "tiger",
+                    "crop": b"cropped_tiger_image"
+                }
+            ],
+            "image_size": (640, 480)
+        }
+
+        # Mock the detect method directly
+        with patch.object(model, 'detect', new=AsyncMock(return_value=detection_result)):
+            result = await model.detect(image_bytes)
+
+            assert result is not None
+            assert "detections" in result
+            assert len(result["detections"]) == 1
+            assert result["detections"][0]["confidence"] == 0.95
     
     @pytest.mark.asyncio
     async def test_detect_no_tiger(self):

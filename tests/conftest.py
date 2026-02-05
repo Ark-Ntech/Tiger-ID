@@ -13,7 +13,7 @@ from unittest.mock import Mock
 
 # Import models and connection utilities
 from backend.database.models import Base
-from backend.database.connection import SessionLocal, engine
+from backend.database import SessionLocal, engine
 
 
 @pytest.fixture(scope="function")
@@ -83,33 +83,33 @@ def test_client(db_session):
     """Create a FastAPI test client"""
     from backend.api.app import create_app
     from unittest.mock import patch
-    
+
     # Mock audit middleware to prevent PostgreSQL connection attempts
     with patch('backend.api.app.AuditMiddleware') as mock_audit:
         # Make the middleware a no-op that just calls the next handler
         async def passthrough_middleware(request, call_next):
             return await call_next(request)
-        
+
         mock_audit.return_value = passthrough_middleware
-        
+
         app = create_app()
-    
+
     # Override the get_db dependency to use test database
     def override_get_db():
         try:
             yield db_session
         finally:
             pass
-    
-    from backend.database.connection import get_db
+
+    from backend.database import get_db
     app.dependency_overrides[get_db] = override_get_db
-    
+
     # Remove middleware that cause issues in tests
     app.user_middleware = []  # Clear middleware stack
-    
+
     client = TestClient(app)
     yield client
-    
+
     # Clean up
     app.dependency_overrides.clear()
 
@@ -279,39 +279,97 @@ def mock_notification_service():
 def mock_mcp_servers():
     """Mock all MCP servers (Firecrawl, Database, TigerID, YouTube, Meta)"""
     from unittest.mock import Mock, AsyncMock
-    
+
     servers = Mock()
-    
+
     # Firecrawl Server
     servers.firecrawl = Mock()
     servers.firecrawl.crawl = AsyncMock(return_value={"content": "Test content"})
     servers.firecrawl.call_tool = AsyncMock(return_value={"content": "Test content"})
     servers.firecrawl.client = Mock()
     servers.firecrawl.client.aclose = AsyncMock(return_value=None)
-    
+
     # Database Server
     servers.database = Mock()
     servers.database.query_tigers = AsyncMock(return_value={"tigers": []})
     servers.database.call_tool = AsyncMock(return_value={"tigers": []})
     servers.database.client = None  # No client to close
-    
+
     # TigerID Server
     servers.tiger_id = Mock()
     servers.tiger_id.identify = AsyncMock(return_value={"tiger_id": str(uuid.uuid4())})
     servers.tiger_id.call_tool = AsyncMock(return_value={"tiger_id": str(uuid.uuid4())})
     servers.tiger_id.client = None  # No client to close
-    
+
     # YouTube Server
     servers.youtube = Mock()
     servers.youtube.search = AsyncMock(return_value={"videos": []})
     servers.youtube.call_tool = AsyncMock(return_value={"videos": []})
     servers.youtube.client = None  # No client to close
-    
+
     # Meta Server
     servers.meta = Mock()
     servers.meta.search = AsyncMock(return_value={"posts": []})
     servers.meta.call_tool = AsyncMock(return_value={"posts": []})
     servers.meta.client = None  # No client to close
-    
+
     return servers
+
+
+@pytest.fixture
+def authenticated_client(test_client, test_user, auth_headers):
+    """Create an authenticated test client with headers pre-set"""
+    # Set default headers for authenticated requests
+    test_client.headers.update(auth_headers)
+    return test_client
+
+
+@pytest.fixture
+def mock_deep_research():
+    """Mock deep research service for discovery routes"""
+    from unittest.mock import AsyncMock, MagicMock
+
+    service = MagicMock()
+    service.research = AsyncMock(return_value={
+        "findings": [],
+        "confidence": 0.8
+    })
+    return service
+
+
+@pytest.fixture
+def mock_discovery_scheduler():
+    """Mock discovery scheduler for discovery routes"""
+    from unittest.mock import AsyncMock, MagicMock
+
+    scheduler = MagicMock()
+    scheduler.get_status = MagicMock(return_value={
+        "is_running": True,
+        "current_facility": "Zoo A",
+        "progress": 0.5
+    })
+    scheduler.start = AsyncMock()
+    scheduler.stop = AsyncMock()
+    scheduler.get_queue = MagicMock(return_value=[])
+    return scheduler
+
+
+@pytest.fixture
+def mock_facility_crawler():
+    """Mock facility crawler for discovery routes"""
+    from unittest.mock import AsyncMock, MagicMock
+
+    crawler = MagicMock()
+    crawler.crawl_facility = AsyncMock(return_value={
+        "images_found": 10,
+        "new_tigers": 3
+    })
+    crawler.get_crawl_history = MagicMock(return_value=[])
+    return crawler
+
+
+@pytest.fixture
+def client(test_client):
+    """Create an unauthenticated test client (alias for test_client for backward compatibility)"""
+    return test_client
 

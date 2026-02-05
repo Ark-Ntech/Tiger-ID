@@ -9,7 +9,7 @@ import json
 from backend.api.app import create_app
 from backend.database.models import User, Investigation
 from backend.auth.auth import create_access_token
-from backend.database.connection import get_db
+from backend.database import get_db
 
 # Note: Fixtures are now in conftest.py (test_client, test_user, auth_headers)
 

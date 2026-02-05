@@ -51,13 +51,13 @@ class NotificationService:
         
         if investigation_id:
             related_entity_type = "investigation"
-            related_entity_id = investigation_id
+            related_entity_id = str(investigation_id)  # Convert UUID to string
         elif evidence_id:
             related_entity_type = "evidence"
-            related_entity_id = evidence_id
+            related_entity_id = str(evidence_id)  # Convert UUID to string
         
         notification = Notification(
-            user_id=user_id,
+            user_id=str(user_id),  # Convert UUID to string
             type=notification_type,  # Use 'type' not 'notification_type' to match model
             title=title,
             message=message,
@@ -105,8 +105,10 @@ class NotificationService:
         Returns:
             List of notifications
         """
+        # Convert UUID to string for SQLite comparison
+        user_id_str = str(user_id)
         query = self.session.query(Notification).filter(
-            Notification.user_id == user_id
+            Notification.user_id == user_id_str
         )
         
         if read is not None:
@@ -125,19 +127,24 @@ class NotificationService:
     
     def get_unread_count(self, user_id: UUID) -> int:
         """Get count of unread notifications for a user"""
+        # Convert UUID to string for SQLite comparison
+        user_id_str = str(user_id)
         return self.session.query(Notification).filter(
             and_(
-                Notification.user_id == user_id,
+                Notification.user_id == user_id_str,
                 Notification.read == False
             )
         ).count()
     
     def mark_as_read(self, notification_id: UUID, user_id: UUID) -> Optional[Notification]:
         """Mark a notification as read"""
+        # Convert UUIDs to strings for SQLite comparison
+        notification_id_str = str(notification_id)
+        user_id_str = str(user_id)
         notification = self.session.query(Notification).filter(
             and_(
-                Notification.notification_id == notification_id,
-                Notification.user_id == user_id
+                Notification.notification_id == notification_id_str,
+                Notification.user_id == user_id_str
             )
         ).first()
         
@@ -151,9 +158,11 @@ class NotificationService:
     
     def mark_all_as_read(self, user_id: UUID) -> int:
         """Mark all notifications as read for a user"""
+        # Convert UUID to string for SQLite comparison
+        user_id_str = str(user_id)
         count = self.session.query(Notification).filter(
             and_(
-                Notification.user_id == user_id,
+                Notification.user_id == user_id_str,
                 Notification.read == False
             )
         ).update(

@@ -1,0 +1,182 @@
+# Example GitHub Actions workflow for E2E tests
+# Copy this file to .github/workflows/e2e-tests.yml to enable CI testing
+#
+# This workflow runs Playwright E2E tests on push and pull requests
+# with sharding support for parallel execution across 4 runners
+
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # Option 1: Single job (slower but simpler)
+  test-single:
+    if: false  # Set to true to enable, false to disable
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+        working-directory: ./frontend
+
+      - name: Start backend
+        run: |
+          # Add commands to start your backend here
+          # Example: docker-compose up -d api
+        working-directory: ./
+
+      - name: Wait for services
+        run: |
+          npx wait-on http://localhost:8000/health -t 60000
+          npx wait-on http://localhost:5173 -t 60000
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        working-directory: ./frontend
+        env:
+          CI: true
+          BASE_URL: http://localhost:5173
+          API_URL: http://localhost:8000
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: frontend/test-results/
+          retention-days: 30
+
+  # Option 2: Sharded execution (faster, runs tests in parallel)
+  test-sharded:
+    if: true  # Set to true to enable, false to disable
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+        working-directory: ./frontend
+
+      - name: Start backend
+        run: |
+          # Add commands to start your backend here
+          # Example: docker-compose up -d api
+        working-directory: ./
+
+      - name: Wait for services
+        run: |
+          # Install wait-on if not already in dependencies
+          npm install -g wait-on
+          wait-on http://localhost:8000/health -t 60000 || echo "Backend not ready"
+          wait-on http://localhost:5173 -t 60000 || echo "Frontend not ready"
+
+      - name: Run Playwright tests (Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        working-directory: ./frontend
+        env:
+          CI: true
+          BASE_URL: http://localhost:5173
+          API_URL: http://localhost:8000
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
+      - name: Upload blob report to artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: frontend/blob-report/
+          retention-days: 1
+
+  # Merge sharded reports into single HTML report
+  merge-reports:
+    if: always() && needs.test-sharded.result != 'skipped'
+    needs: [test-sharded]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Download blob reports from artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: frontend/all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge into HTML Report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+        working-directory: ./frontend
+
+      - name: Upload merged HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-merged
+          path: frontend/playwright-report/
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: frontend/test-results/
+          retention-days: 30
+
+# GitHub Secrets Required:
+# - TEST_USER_EMAIL: Email for test user account
+# - TEST_USER_PASSWORD: Password for test user account
+#
+# Optional: Add deployment secrets if needed
+# - MODAL_TOKEN_ID
+# - MODAL_TOKEN_SECRET
+# - ANTHROPIC_API_KEY

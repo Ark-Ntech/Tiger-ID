@@ -415,13 +415,72 @@ await server.call_tool(
 )
 ```
 
+## Rate Limiting Integration
+
+The Tiger ID discovery system integrates Playwright with the `RateLimiter` class for responsible crawling:
+
+### Per-Domain Rate Limiting
+
+```python
+from backend.services.facility_crawler_service import RateLimiter
+
+rate_limiter = RateLimiter(
+    requests_per_second=0.5,  # 2 seconds between requests
+    max_backoff=60.0          # Maximum wait of 60 seconds
+)
+
+# Wait before making request
+await rate_limiter.wait_for_slot(url)
+
+# Report success/failure for backoff adjustment
+rate_limiter.report_success(url)
+rate_limiter.report_error(url, status_code=429)
+```
+
+### Exponential Backoff
+
+The rate limiter automatically adjusts wait times based on server responses:
+
+| HTTP Status | Backoff Behavior |
+|-------------|------------------|
+| 200 (success) | Reduce backoff by 0.9x (gradual recovery) |
+| 429 (rate limited) | Double backoff (exponential increase) |
+| 503 (service unavailable) | Double backoff |
+| 520-524 (Cloudflare errors) | Double backoff |
+| 5xx (server errors) | Increase backoff by 1.5x |
+
+### Best Practices for Crawling
+
+1. **Respect robots.txt**: Check robots.txt before crawling
+2. **Use delays between pages**: Always wait between gallery page visits
+3. **Monitor backoff stats**: Check `rate_limiter.get_stats()` for domains with high backoff
+4. **Handle timeouts gracefully**: Don't hammer servers after timeouts
+
+### Example: Rate-Limited Gallery Crawl
+
+```python
+async def crawl_facility_gallery(facility_url, rate_limiter):
+    """Crawl gallery pages with rate limiting."""
+    gallery_links = find_gallery_links(facility_url)
+
+    for gallery_url in gallery_links[:5]:  # Limit to 5 pages
+        await rate_limiter.wait_for_slot(gallery_url)
+
+        try:
+            async with page.goto(gallery_url, wait_until="networkidle"):
+                images = await extract_images(page)
+                rate_limiter.report_success(gallery_url)
+        except TimeoutError:
+            rate_limiter.report_error(gallery_url, 408)
+```
+
 ## Security Considerations
 
 1. **URL Validation**: Always validate URLs before navigation
 2. **Credential Handling**: Never hardcode credentials; use secure storage
 3. **Content Sanitization**: Sanitize any extracted content before storage
 4. **Network Security**: Be aware of the websites you're automating
-5. **Rate Limiting**: Implement rate limiting to avoid overwhelming target sites
+5. **Rate Limiting**: The discovery system includes built-in per-domain rate limiting
 
 ## Performance Tips
 

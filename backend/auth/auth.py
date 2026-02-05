@@ -1,7 +1,8 @@
 """Authentication utilities"""
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Set
+import uuid
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
@@ -12,6 +13,31 @@ from backend.database import get_db, User
 from backend.config.settings import get_settings
 
 settings = get_settings()
+
+# Token blacklist for logged out tokens
+# In production, use Redis or a database table for persistence across restarts
+_token_blacklist: Set[str] = set()
+
+
+def blacklist_token(jti: str) -> None:
+    """Add a token JTI to the blacklist."""
+    _token_blacklist.add(jti)
+
+
+def is_token_blacklisted(jti: str) -> bool:
+    """Check if a token JTI is blacklisted."""
+    return jti in _token_blacklist
+
+
+def clear_expired_blacklist() -> None:
+    """
+    Clear expired tokens from blacklist.
+    Note: This is a simple implementation. In production, tokens should
+    be stored with expiration and cleaned up periodically.
+    """
+    # For a proper implementation, store tokens with their expiration time
+    # and periodically clean up expired entries
+    pass
 
 # HTTP Bearer security
 security = HTTPBearer()
@@ -40,22 +66,38 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token"""
+    """Create a JWT access token with unique JTI for blacklisting support."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    
-    to_encode.update({"exp": expire})
+
+    # Add JTI (JWT ID) for token blacklisting
+    jti = str(uuid.uuid4())
+    to_encode.update({
+        "exp": expire,
+        "jti": jti,
+        "iat": datetime.utcnow()
+    })
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 
 def decode_token(token: str) -> dict:
-    """Decode and validate a JWT token"""
+    """Decode and validate a JWT token, checking blacklist."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        # Check if token is blacklisted
+        jti = payload.get("jti")
+        if jti and is_token_blacklisted(jti):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         return payload
     except JWTError:
         raise HTTPException(

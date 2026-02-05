@@ -43,8 +43,10 @@ class ExportService:
         Returns:
             JSON-serializable dictionary
         """
+        # Convert UUID to string for SQLite comparison
+        investigation_id_str = str(investigation_id)
         investigation = self.session.query(Investigation).filter(
-            Investigation.investigation_id == investigation_id
+            Investigation.investigation_id == investigation_id_str
         ).first()
         
         if not investigation:
@@ -65,7 +67,7 @@ class ExportService:
         
         if include_evidence:
             evidence_items = self.session.query(Evidence).filter(
-                Evidence.investigation_id == investigation_id
+                Evidence.investigation_id == investigation_id_str
             ).all()
             
             export_data["evidence"] = [
@@ -83,7 +85,7 @@ class ExportService:
         
         if include_steps:
             steps = self.session.query(InvestigationStep).filter(
-                InvestigationStep.investigation_id == investigation_id
+                InvestigationStep.investigation_id == investigation_id_str
             ).order_by(InvestigationStep.timestamp).all()
             
             export_data["steps"] = [
@@ -281,8 +283,10 @@ class ExportService:
         import csv
         from io import StringIO
         
+        # Convert UUID to string for SQLite comparison
+        investigation_id_str = str(investigation_id)
         investigation = self.session.query(Investigation).filter(
-            Investigation.investigation_id == investigation_id
+            Investigation.investigation_id == investigation_id_str
         ).first()
         
         if not investigation:
@@ -292,7 +296,7 @@ class ExportService:
         
         if data_type == "evidence":
             evidence_items = self.session.query(Evidence).filter(
-                Evidence.investigation_id == investigation_id
+                Evidence.investigation_id == investigation_id_str
             ).all()
             
             writer = csv.writer(output)
@@ -313,7 +317,7 @@ class ExportService:
         
         elif data_type == "steps":
             steps = self.session.query(InvestigationStep).filter(
-                InvestigationStep.investigation_id == investigation_id
+                InvestigationStep.investigation_id == investigation_id_str
             ).order_by(InvestigationStep.timestamp).all()
             
             writer = csv.writer(output)

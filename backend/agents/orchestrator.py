@@ -1,4 +1,4 @@
-"""OmniVinci Orchestrator Agent for coordinating investigations"""
+"""Orchestrator Agent for coordinating investigations"""
 
 from typing import Dict, Any, List, Optional
 from uuid import UUID
@@ -40,9 +40,8 @@ class OrchestratorAgent:
     """Orchestrator agent coordinating multi-agent investigation workflow"""
     
     def __init__(
-        self, 
-        db: Optional[Session] = None, 
-        omnivinci_api_key: Optional[str] = None,
+        self,
+        db: Optional[Session] = None,
         research_agent: Optional[ResearchAgent] = None,
         analysis_agent: Optional[AnalysisAgent] = None,
         validation_agent: Optional[ValidationAgent] = None,
@@ -52,10 +51,9 @@ class OrchestratorAgent:
     ):
         """
         Initialize Orchestrator Agent
-        
+
         Args:
             db: Database session (optional, will create if not provided)
-            omnivinci_api_key: OmniVinci API key (optional)
             research_agent: ResearchAgent instance (optional, for testing)
             analysis_agent: AnalysisAgent instance (optional, for testing)
             validation_agent: ValidationAgent instance (optional, for testing)
@@ -64,15 +62,6 @@ class OrchestratorAgent:
             skip_ml_models: Skip ML model initialization (for testing)
         """
         self.db = db or None
-        settings = get_settings()
-        self.omnivinci_api_key = omnivinci_api_key or settings.omnivinci.api_key
-        
-        # Log OmniVinci status
-        if not self.omnivinci_api_key:
-            logger.warning("OmniVinci API key not configured - multi-modal features will be limited")
-            logger.info("Set OMNIVINCI_API_KEY to enable OmniVinci multi-modal understanding")
-        else:
-            logger.info("OmniVinci API key configured")
         
         # Initialize specialized agents (allow injection for testing)
         if research_agent:
@@ -524,7 +513,7 @@ Respond in JSON format:
             "selected_tools": user_inputs.get("selected_tools", [])  # Include selected tools
         }
         
-        # Get available tools for OmniVinci if query is provided
+        # Get available tools if query is provided
         selected_tool_names = user_inputs.get("selected_tools", [])
         
         if parsed.get("query"):
@@ -601,15 +590,15 @@ Respond in JSON format:
                     except Exception as e:
                         logger.warning(f"Could not load firecrawl tools: {e}")
                 
-                # Store tools in parsed for OmniVinci to use
+                # Store tools in parsed for orchestrator to use
                 if all_tools:
-                    logger.info(f"Providing {len(all_tools)} tools to OmniVinci for query understanding")
+                    logger.info(f"Providing {len(all_tools)} tools for query understanding")
                     parsed["available_tools"] = all_tools
                 elif selected_tool_names:
                     logger.warning(f"Selected tools {selected_tool_names} were not found or could not be loaded")
-                    
+
             except Exception as e:
-                logger.warning(f"Could not get tools for OmniVinci: {e}", exc_info=True)
+                logger.warning(f"Could not get tools: {e}", exc_info=True)
         
         logger.info(f"Parsed user inputs. Query: {parsed.get('query', '')[:50]}..., Selected tools: {len(selected_tool_names)}")
         
@@ -743,28 +732,13 @@ Respond in JSON format:
         )
         research_results["external_apis"] = api_data
         
-        # Use OmniVinci with tools if query is provided and tools are available
+        # Log query with available tools if present
         query = inputs.get("query", "")
         available_tools = inputs.get("available_tools", [])
-        if query and available_tools and self.omnivinci_api_key:
-            try:
-                from backend.models.omnivinci import get_omnivinci_model
-                from pathlib import Path
-                import tempfile
-                
-                # For text queries, we can use OmniVinci's understanding
-                # Create a simple text file to simulate video input (OmniVinci is video-focused)
-                # In production, this would be actual video files
-                logger.info(f"Using OmniVinci with {len(available_tools)} tools to understand query: {query[:50]}...")
-                
-                # For now, just log that tools are available
-                # OmniVinci will receive tools in the prompt when processing videos
-                # For text-only queries, we'll enhance the prompt with tool information
-                enhanced_query = f"{query}\n\nAvailable tools: {', '.join([t.get('name', '') for t in available_tools[:5]])}"
-                logger.info(f"Enhanced query with tools: {enhanced_query[:100]}...")
-                
-            except Exception as e:
-                logger.warning(f"Could not use OmniVinci with tools: {e}")
+        if query and available_tools:
+            logger.info(f"Processing query with {len(available_tools)} available tools: {query[:50]}...")
+            enhanced_query = f"{query}\n\nAvailable tools: {', '.join([t.get('name', '') for t in available_tools[:5]])}"
+            logger.info(f"Enhanced query with tools: {enhanced_query[:100]}...")
         
         # Web intelligence gathering
         web_intelligence = {}

@@ -95,9 +95,9 @@ class TestAuditMiddleware:
         
         await middleware.dispatch(mock_request, mock_call_next)
         
-        # Verify user_id was passed to audit
+        # Verify user_id was passed to audit (converted to string by middleware)
         call_args = mock_audit_service.log_action.call_args
-        assert call_args[1]["user_id"] == mock_user.user_id
+        assert call_args[1]["user_id"] == str(mock_user.user_id)
     
     @pytest.mark.asyncio
     @patch('backend.middleware.audit_middleware.get_db_session')

@@ -54,14 +54,14 @@ const Alert = ({ type = 'info', title, children, message, className, onClose }: 
   const Icon = style.Icon
 
   return (
-    <div className={cn('border rounded-lg p-4', style.container, className)}>
+    <div data-testid="alert" className={cn('border rounded-lg p-4', style.container, className)}>
       <div className="flex">
-        <div className="flex-shrink-0">
+        <div data-testid="alert-icon" className="flex-shrink-0">
           <Icon className={cn('h-5 w-5', style.icon)} />
         </div>
         <div className="ml-3 flex-1">
-          {title && <h3 className={cn('text-sm font-medium', style.title)}>{title}</h3>}
-          <div className={cn('text-sm', title ? 'mt-2' : '', style.text)}>{content}</div>
+          {title && <h3 data-testid="alert-title" className={cn('text-sm font-medium', style.title)}>{title}</h3>}
+          <div data-testid="alert-message" className={cn('text-sm', title ? 'mt-2' : '', style.text)}>{content}</div>
         </div>
         {onClose && (
           <button

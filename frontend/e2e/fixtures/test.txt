@@ -1,0 +1,2 @@
+This is a test text file for validating file type restrictions in upload forms.
+It should trigger validation errors when uploaded to image upload inputs.

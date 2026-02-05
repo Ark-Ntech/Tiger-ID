@@ -1,15 +1,61 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   BellIcon,
   MagnifyingGlassIcon,
   UserCircleIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
+  SunIcon,
+  MoonIcon,
 } from '@heroicons/react/24/outline'
 import { Menu, Transition } from '@headlessui/react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useAppSelector } from '../../app/hooks'
+import { cn } from '../../utils/cn'
+
+// Dark mode hook
+const useDarkMode = () => {
+  const [isDark, setIsDark] = useState(() => {
+    // Check localStorage first
+    const stored = localStorage.getItem('tiger-id-theme')
+    if (stored) {
+      return stored === 'dark'
+    }
+    // Then check system preference
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+
+    if (isDark) {
+      root.classList.add('dark')
+      localStorage.setItem('tiger-id-theme', 'dark')
+    } else {
+      root.classList.remove('dark')
+      localStorage.setItem('tiger-id-theme', 'light')
+    }
+  }, [isDark])
+
+  // Listen for system preference changes
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+    const handleChange = (e: MediaQueryListEvent) => {
+      const stored = localStorage.getItem('tiger-id-theme')
+      // Only auto-switch if user hasn't set a preference
+      if (!stored) {
+        setIsDark(e.matches)
+      }
+    }
+
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [])
+
+  return [isDark, setIsDark] as const
+}
 
 const Header = () => {
   const navigate = useNavigate()
@@ -17,6 +63,7 @@ const Header = () => {
   const notifications = useAppSelector((state) => state.notifications.notifications)
   const unreadCount = useAppSelector((state) => state.notifications.unreadCount)
   const [searchQuery, setSearchQuery] = useState('')
+  const [isDark, setIsDark] = useDarkMode()
 
   const handleLogout = async () => {
     await logout()
@@ -31,33 +78,80 @@ const Header = () => {
     }
   }
 
+  const toggleDarkMode = () => {
+    setIsDark(!isDark)
+  }
+
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
+    <header className={cn(
+      'bg-white dark:bg-tactical-900 shadow-sm',
+      'border-b border-tactical-200 dark:border-tactical-700',
+      'transition-colors duration-200'
+    )}>
       <div className="flex items-center justify-between px-6 py-4">
         {/* Search Bar */}
         <div className="flex-1 max-w-2xl">
           <form onSubmit={handleSearch} className="relative">
             <div className="relative">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <MagnifyingGlassIcon className={cn(
+                'absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5',
+                'text-tactical-400 dark:text-tactical-500'
+              )} />
               <input
                 type="text"
                 placeholder="Search investigations, tigers, facilities..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className={cn(
+                  'w-full pl-10 pr-4 py-2 rounded-lg',
+                  'bg-tactical-50 dark:bg-tactical-800',
+                  'text-tactical-900 dark:text-tactical-100',
+                  'placeholder-tactical-400 dark:placeholder-tactical-500',
+                  'border border-tactical-200 dark:border-tactical-700',
+                  'focus:outline-none focus:ring-2 focus:ring-tiger-orange/30 focus:border-tiger-orange',
+                  'transition-all duration-200'
+                )}
               />
             </div>
           </form>
         </div>
 
         {/* Right Side Actions */}
-        <div className="flex items-center space-x-4 ml-6">
+        <div className="flex items-center space-x-3 ml-6">
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={toggleDarkMode}
+            className={cn(
+              'p-2 rounded-lg transition-colors',
+              'text-tactical-500 dark:text-tactical-400',
+              'hover:bg-tactical-100 dark:hover:bg-tactical-800',
+              'hover:text-tactical-700 dark:hover:text-tactical-200'
+            )}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDark ? (
+              <SunIcon className="h-5 w-5" />
+            ) : (
+              <MoonIcon className="h-5 w-5" />
+            )}
+          </button>
+
           {/* Notifications */}
           <Menu as="div" className="relative">
-            <Menu.Button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
-              <BellIcon className="h-6 w-6" />
+            <Menu.Button className={cn(
+              'relative p-2 rounded-lg transition-colors',
+              'text-tactical-500 dark:text-tactical-400',
+              'hover:bg-tactical-100 dark:hover:bg-tactical-800',
+              'hover:text-tactical-700 dark:hover:text-tactical-200'
+            )}>
+              <BellIcon className="h-5 w-5" />
               {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 h-4 w-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
+                <span className={cn(
+                  'absolute top-1 right-1 h-4 w-4 rounded-full',
+                  'bg-tiger-orange text-white',
+                  'text-xs font-bold flex items-center justify-center',
+                  'animate-pulse-slow'
+                )}>
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -70,27 +164,42 @@ const Header = () => {
               leaveFrom="transform scale-100 opacity-100"
               leaveTo="transform scale-95 opacity-0"
             >
-              <Menu.Items className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
+              <Menu.Items className={cn(
+                'absolute right-0 mt-2 w-80 rounded-xl shadow-tactical-lg',
+                'bg-white dark:bg-tactical-800',
+                'border border-tactical-200 dark:border-tactical-700',
+                'ring-1 ring-black/5 focus:outline-none z-50',
+                'overflow-hidden'
+              )}>
                 <div className="p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Notifications</h3>
+                  <h3 className="text-sm font-semibold text-tactical-900 dark:text-tactical-100 mb-3">
+                    Notifications
+                  </h3>
                   {notifications.length > 0 ? (
                     <div className="space-y-2 max-h-96 overflow-y-auto">
                       {notifications.slice(0, 5).map((notification) => (
                         <div
                           key={notification.id}
-                          className={`p-3 rounded-lg ${
-                            notification.read ? 'bg-gray-50' : 'bg-blue-50'
-                          }`}
+                          className={cn(
+                            'p-3 rounded-lg transition-colors',
+                            notification.read
+                              ? 'bg-tactical-50 dark:bg-tactical-900/50'
+                              : 'bg-tiger-orange/10 dark:bg-tiger-orange/20'
+                          )}
                         >
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-sm font-medium text-tactical-900 dark:text-tactical-100">
                             {notification.title}
                           </p>
-                          <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
+                          <p className="text-xs text-tactical-600 dark:text-tactical-400 mt-1">
+                            {notification.message}
+                          </p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No notifications</p>
+                    <p className="text-sm text-tactical-500 dark:text-tactical-400 text-center py-4">
+                      No notifications
+                    </p>
                   )}
                 </div>
               </Menu.Items>
@@ -99,12 +208,19 @@ const Header = () => {
 
           {/* User Menu */}
           <Menu as="div" className="relative">
-            <Menu.Button className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">{user?.full_name || user?.username}</p>
-                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+            <Menu.Button className={cn(
+              'flex items-center space-x-3 p-2 rounded-lg transition-colors',
+              'hover:bg-tactical-100 dark:hover:bg-tactical-800'
+            )}>
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-medium text-tactical-900 dark:text-tactical-100">
+                  {user?.full_name || user?.username}
+                </p>
+                <p className="text-xs text-tactical-500 dark:text-tactical-400 capitalize">
+                  {user?.role}
+                </p>
               </div>
-              <UserCircleIcon className="h-8 w-8 text-gray-400" />
+              <UserCircleIcon className="h-8 w-8 text-tactical-400 dark:text-tactical-500" />
             </Menu.Button>
             <Transition
               enter="transition duration-100 ease-out"
@@ -114,27 +230,38 @@ const Header = () => {
               leaveFrom="transform scale-100 opacity-100"
               leaveTo="transform scale-95 opacity-0"
             >
-              <Menu.Items className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
+              <Menu.Items className={cn(
+                'absolute right-0 mt-2 w-48 rounded-xl shadow-tactical-lg',
+                'bg-white dark:bg-tactical-800',
+                'border border-tactical-200 dark:border-tactical-700',
+                'ring-1 ring-black/5 focus:outline-none z-50',
+                'overflow-hidden'
+              )}>
                 <div className="p-1">
                   <Menu.Item>
                     {({ active }) => (
                       <button
-                        className={`${
-                          active ? 'bg-gray-100' : ''
-                        } flex items-center w-full px-4 py-2 text-sm text-gray-700 rounded-lg`}
+                        className={cn(
+                          'flex items-center w-full px-4 py-2.5 rounded-lg text-sm',
+                          'text-tactical-700 dark:text-tactical-300',
+                          active && 'bg-tactical-100 dark:bg-tactical-700'
+                        )}
                       >
-                        <Cog6ToothIcon className="h-5 w-5 mr-3" />
+                        <Cog6ToothIcon className="h-5 w-5 mr-3 text-tactical-500 dark:text-tactical-400" />
                         Settings
                       </button>
                     )}
                   </Menu.Item>
+                  <div className="my-1 border-t border-tactical-200 dark:border-tactical-700" />
                   <Menu.Item>
                     {({ active }) => (
                       <button
                         onClick={handleLogout}
-                        className={`${
-                          active ? 'bg-gray-100' : ''
-                        } flex items-center w-full px-4 py-2 text-sm text-gray-700 rounded-lg`}
+                        className={cn(
+                          'flex items-center w-full px-4 py-2.5 rounded-lg text-sm',
+                          'text-red-600 dark:text-red-400',
+                          active && 'bg-red-50 dark:bg-red-900/30'
+                        )}
                       >
                         <ArrowRightOnRectangleIcon className="h-5 w-5 mr-3" />
                         Logout
@@ -152,4 +279,3 @@ const Header = () => {
 }
 
 export default Header
-

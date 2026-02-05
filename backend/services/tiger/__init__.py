@@ -11,7 +11,10 @@ from backend.services.tiger.ensemble_strategy import (
     EnsembleStrategy,
     StaggeredEnsembleStrategy,
     ParallelEnsembleStrategy,
+    WeightedEnsembleStrategy,
+    VerifiedEnsembleStrategy,
 )
+from backend.services.tiger.model_loader import ModelLoader, get_model_loader
 
 __all__ = [
     "TigerIdentificationService",
@@ -20,4 +23,8 @@ __all__ = [
     "EnsembleStrategy",
     "StaggeredEnsembleStrategy",
     "ParallelEnsembleStrategy",
+    "WeightedEnsembleStrategy",
+    "VerifiedEnsembleStrategy",
+    "ModelLoader",
+    "get_model_loader",
 ]

@@ -145,9 +145,11 @@ class UserRepository(BaseRepository[User]):
         Returns:
             List of User objects
         """
+        # Convert enum to its string value for SQLite compatibility
+        role_value = role.value if hasattr(role, 'value') else role
         return (
             self.db.query(User)
-            .filter(User.role == role)
+            .filter(User.role == role_value)
             .order_by(User.username)
             .all()
         )

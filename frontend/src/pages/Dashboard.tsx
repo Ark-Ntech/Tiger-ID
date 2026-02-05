@@ -21,6 +21,14 @@ import LoadingSpinner from '../components/common/LoadingSpinner'
 import Badge from '../components/common/Badge'
 import Button from '../components/common/Button'
 import Alert from '../components/common/Alert'
+import QuickStatsGrid, { StatItem } from '../components/dashboard/QuickStatsGrid'
+import SubagentActivityPanel, {
+  SubagentTask,
+  PoolStats,
+} from '../components/dashboard/SubagentActivityPanel'
+import RecentInvestigationsTable, {
+  Investigation as TableInvestigation,
+} from '../components/dashboard/RecentInvestigationsTable'
 import {
   BarChart,
   Bar,
@@ -37,13 +45,15 @@ import {
   Line,
 } from 'recharts'
 import GeographicMap from '../components/analytics/GeographicMap'
-import { 
-  ChartBarIcon, 
-  ClockIcon, 
+import {
+  ChartBarIcon,
+  ClockIcon,
   CpuChipIcon,
   ArrowPathIcon,
   BuildingOfficeIcon,
   FolderOpenIcon,
+  ShieldCheckIcon,
+  IdentificationIcon,
 } from '@heroicons/react/24/outline'
 
 const COLORS = ['#ff6b35', '#f97316', '#ea580c', '#c2410c', '#10b981', '#3b82f6']
@@ -85,8 +95,23 @@ const Dashboard = () => {
   const { data: investigationsData, isLoading: investigationsLoading, refetch: refetchInvestigations } =
     useGetInvestigationsQuery({ page: 1, page_size: 10 })
   const { data: facilitiesData, refetch: refetchFacilities } = useGetFacilitiesQuery({ page: 1, page_size: 1000 })
-  
+
   const facilities = facilitiesData?.data?.data || []
+
+  // Transform facilities for GeographicMap (requires 'name' property)
+  const mapFacilities = useMemo(
+    () =>
+      facilities.map(
+        (f: { id: string; exhibitor_name?: string; name?: string; state?: string; city?: string; tiger_count?: number }) => ({
+          id: f.id,
+          name: f.exhibitor_name || f.name || 'Unknown',
+          state: f.state,
+          city: f.city,
+          tiger_count: f.tiger_count,
+        })
+      ),
+    [facilities]
+  )
 
   // Analytics queries
   const {
@@ -104,18 +129,18 @@ const Dashboard = () => {
     isLoading: verificationAnalyticsLoading,
     refetch: refetchVerificationAnalytics,
   } = useGetVerificationAnalyticsQuery(dateRange)
-  const { 
-    data: geographicAnalyticsData, 
+  const {
+    data: geographicAnalyticsData,
     isLoading: geographicAnalyticsLoading,
     refetch: refetchGeographicAnalytics,
   } = useGetGeographicAnalyticsQuery({})
-  const { 
-    data: tigerAnalyticsData, 
+  const {
+    data: tigerAnalyticsData,
     isLoading: tigerAnalyticsLoading,
     refetch: refetchTigerAnalytics,
   } = useGetTigerAnalyticsQuery({})
-  const { 
-    data: agentAnalyticsData, 
+  const {
+    data: agentAnalyticsData,
     isLoading: agentAnalyticsLoading,
     refetch: refetchAgentAnalytics,
   } = useGetAgentAnalyticsQuery(dateRange)
@@ -215,7 +240,7 @@ const Dashboard = () => {
   const tigerIdentifications = useMemo(() => {
     if (!tigAnalytics?.trends) return []
     return tigAnalytics.trends
-      .map((trend) => ({
+      .map((trend: { date: string; count: number }) => ({
         date: new Date(trend.date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }),
         count: trend.count,
       }))
@@ -227,16 +252,28 @@ const Dashboard = () => {
   const [_benchmarkModel, { isLoading: benchmarkLoading }] = useBenchmarkModelMutation()
   void _benchmarkModel // Reserved for benchmark feature
   const [selectedModel, setSelectedModel] = useState<string>('')
-  const [benchmarkResults, setBenchmarkResults] = useState<any>(null)
+  const [benchmarkResults, setBenchmarkResults] = useState<{ message: string; model: string } | null>(null)
   const [isBenchmarking, setIsBenchmarking] = useState(false)
 
-  const availableModels = useMemo(() => modelsData?.data?.models || {}, [modelsData?.data?.models])
+  // Define model info type
+  type ModelInfo = {
+    name?: string
+    description?: string
+    gpu?: string
+    backend?: string
+    type?: string
+  }
+
+  const availableModels = useMemo(
+    () => (modelsData?.data?.models || {}) as Record<string, ModelInfo>,
+    [modelsData?.data?.models]
+  )
   const modelNames = useMemo(() => Object.keys(availableModels), [availableModels])
 
   // Use Modal model metadata instead of mock data
   const performanceData = useMemo(() => {
     return modelNames.map((modelName) => {
-      const modelInfo = availableModels[modelName] || {}
+      const modelInfo: ModelInfo = availableModels[modelName] || {}
       return {
         model: modelName,
         name: modelInfo.name || modelName,
@@ -261,63 +298,300 @@ const Dashboard = () => {
     try {
       setBenchmarkResults({
         message: 'Benchmarking requires test images. Use the Model Testing page to run benchmarks.',
-        model: selectedModel
+        model: selectedModel,
       })
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error benchmarking model:', error)
     } finally {
       setIsBenchmarking(false)
     }
   }
 
+  // Build QuickStatsGrid data
+  const quickStats: StatItem[] = useMemo(() => {
+    const tigerChange = tigAnalytics?.trends?.length
+      ? tigAnalytics.trends[tigAnalytics.trends.length - 1]?.count -
+        (tigAnalytics.trends[tigAnalytics.trends.length - 2]?.count || 0)
+      : 0
+
+    return [
+      {
+        label: 'Total Tigers',
+        value: stats?.total_tigers || tigAnalytics?.total_tigers || 0,
+        icon: <IdentificationIcon className="w-5 h-5" />,
+        color: 'info' as const,
+        href: '/tigers',
+        change:
+          tigerChange !== 0
+            ? {
+                value: Math.abs(tigerChange),
+                type: tigerChange > 0 ? ('increase' as const) : ('decrease' as const),
+                period: 'vs last period',
+              }
+            : undefined,
+      },
+      {
+        label: 'Facilities',
+        value: stats?.total_facilities || facAnalytics?.total_facilities || 0,
+        icon: <BuildingOfficeIcon className="w-5 h-5" />,
+        color: 'success' as const,
+        href: '/facilities',
+        change:
+          (facAnalytics as unknown as { active_facilities?: number } | undefined)?.active_facilities &&
+          (facAnalytics as unknown as { active_facilities: number }).active_facilities > 0
+            ? {
+                value: (facAnalytics as unknown as { active_facilities: number }).active_facilities,
+                type: 'neutral' as const,
+                period: 'active',
+              }
+            : undefined,
+      },
+      {
+        label: 'ID Rate',
+        value: `${tigAnalytics?.identification_rate?.toFixed(0) || 0}%`,
+        icon: <ShieldCheckIcon className="w-5 h-5" />,
+        color: (tigAnalytics?.identification_rate || 0) >= 80 ? ('success' as const) : ('warning' as const),
+      },
+      {
+        label: 'Pending Verifications',
+        value: verAnalytics?.pending || 0,
+        icon: <ClockIcon className="w-5 h-5" />,
+        color: (verAnalytics?.pending || 0) > 10 ? ('warning' as const) : ('default' as const),
+        href: '/verifications',
+      },
+    ]
+  }, [stats, tigAnalytics, facAnalytics, verAnalytics])
+
+  // Transform investigations for RecentInvestigationsTable
+  const tableInvestigations: TableInvestigation[] = useMemo(() => {
+    const rawInvestigations = investigationsData?.data?.data || []
+    return rawInvestigations.map((inv: {
+      id: string
+      created_at?: string
+      status: string
+      query_image_url?: string
+      match_count?: number
+      top_match_confidence?: number
+      top_match_tiger_name?: string
+      phase?: string
+    }) => ({
+      id: inv.id,
+      createdAt: inv.created_at || new Date().toISOString(),
+      status: inv.status as 'pending' | 'in_progress' | 'completed' | 'failed',
+      queryImageUrl: inv.query_image_url,
+      matchCount: inv.match_count || 0,
+      topMatchConfidence: inv.top_match_confidence,
+      topMatchTigerName: inv.top_match_tiger_name,
+      phase: inv.phase,
+    }))
+  }, [investigationsData])
+
+  // Mock subagent tasks - in production this would come from an API
+  const subagentTasks: SubagentTask[] = useMemo(() => {
+    const tasks: SubagentTask[] = []
+
+    // Create tasks based on current investigation status
+    const activeInvestigations = tableInvestigations.filter(
+      (inv) => inv.status === 'in_progress' || inv.status === 'pending'
+    )
+
+    activeInvestigations.forEach((inv, index) => {
+      if (inv.status === 'in_progress') {
+        tasks.push({
+          id: `ml-${inv.id}`,
+          type: 'ml_inference',
+          status: 'running',
+          investigation_id: inv.id,
+          started_at: new Date(Date.now() - index * 60000).toISOString(),
+          progress: Math.min(95, 30 + index * 20),
+          model: 'wildlife_tools',
+        })
+      } else if (inv.status === 'pending') {
+        tasks.push({
+          id: `queue-${inv.id}`,
+          type: 'ml_inference',
+          status: 'queued',
+          investigation_id: inv.id,
+        })
+      }
+    })
+
+    // Add some completed tasks
+    if (tableInvestigations.length > 0) {
+      const completedInv = tableInvestigations.find((inv) => inv.status === 'completed')
+      if (completedInv) {
+        tasks.push({
+          id: `report-${completedInv.id}`,
+          type: 'report_generation',
+          status: 'completed',
+          investigation_id: completedInv.id,
+          started_at: new Date(Date.now() - 300000).toISOString(),
+        })
+      }
+    }
+
+    return tasks
+  }, [tableInvestigations])
+
+  // Mock pool stats - in production this would come from an API
+  const poolStats: PoolStats = useMemo(() => {
+    const runningMl = subagentTasks.filter((t) => t.type === 'ml_inference' && t.status === 'running').length
+    const runningResearch = subagentTasks.filter((t) => t.type === 'research' && t.status === 'running').length
+    const runningReport = subagentTasks.filter(
+      (t) => t.type === 'report_generation' && t.status === 'running'
+    ).length
+
+    return {
+      ml_inference: { active: runningMl, max: 4 },
+      research: { active: runningResearch, max: 2 },
+      report_generation: { active: runningReport, max: 2 },
+    }
+  }, [subagentTasks])
+
+  const handleViewInvestigation = (id: string) => {
+    navigate(`/investigation2/${id}`)
+  }
+
+  const handleTaskClick = (taskId: string) => {
+    const task = subagentTasks.find((t) => t.id === taskId)
+    if (task?.investigation_id) {
+      navigate(`/investigation2/${task.investigation_id}`)
+    }
+  }
+
   const tabs = [
-    'Investigations', 
-    'Evidence & Verification', 
-    'Geographic', 
-    'Tigers', 
+    'Investigations',
+    'Evidence & Verification',
+    'Geographic',
+    'Tigers',
     'Facilities',
-    'Agent Performance', 
-    'Model Performance'
+    'Agent Performance',
+    'Model Performance',
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="dashboard-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-testid="dashboard-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
-          <p className="text-gray-600 mt-2">Comprehensive system analytics and insights</p>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-2">Wildlife identification system overview</p>
           {lastRefresh && (
-            <p className="text-xs text-gray-500 mt-1">
-              Last updated: {lastRefresh.toLocaleTimeString()}
-            </p>
+            <p className="text-xs text-gray-500 mt-1">Last updated: {lastRefresh.toLocaleTimeString()}</p>
           )}
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2" data-testid="dashboard-controls">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setTimeRange('7days')}
+            className={timeRange === '7days' ? 'ring-2 ring-primary-500' : ''}
+          >
+            7d
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setTimeRange('30days')}
+            className={timeRange === '30days' ? 'ring-2 ring-primary-500' : ''}
+          >
+            30d
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setTimeRange('90days')}
+            className={timeRange === '90days' ? 'ring-2 ring-primary-500' : ''}
+          >
+            90d
+          </Button>
           <Button
             variant="secondary"
             onClick={handleRefresh}
             disabled={isLoading}
             className="flex items-center space-x-2"
+            data-testid="refresh-button"
           >
             <ArrowPathIcon className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </Button>
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="7days">Last 7 Days</option>
-            <option value="30days">Last 30 Days</option>
-            <option value="90days">Last 90 Days</option>
-            <option value="1year">Last Year</option>
-          </select>
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <Card padding="none">
+      {/* Quick Stats Grid */}
+      <QuickStatsGrid stats={quickStats} columns={4} loading={statsLoading} />
+
+      {/* Main Content Grid: Charts + Subagent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" data-testid="dashboard-main-content">
+        {/* Investigation Activity Chart */}
+        <div className="lg:col-span-2">
+          <Card data-testid="investigation-activity-chart">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Investigation Activity</h3>
+            {investigationAnalyticsLoading ? (
+              <div className="flex items-center justify-center h-[300px]">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={investigationsTimeline}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="count" stroke="#ff6b35" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </div>
+
+        {/* Subagent Activity Panel */}
+        <div className="lg:col-span-1">
+          <SubagentActivityPanel
+            tasks={subagentTasks}
+            poolStats={poolStats}
+            onTaskClick={handleTaskClick}
+          />
+        </div>
+      </div>
+
+      {/* Second Row: Recent Investigations + Geographic Map */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-testid="dashboard-secondary-content">
+        {/* Recent Investigations Table */}
+        <Card padding="md" data-testid="recent-investigations-card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Investigations</h3>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/investigation2')}>
+              View All
+            </Button>
+          </div>
+          <RecentInvestigationsTable
+            investigations={tableInvestigations}
+            maxRows={5}
+            onViewInvestigation={handleViewInvestigation}
+            isLoading={investigationsLoading}
+          />
+        </Card>
+
+        {/* Geographic Map */}
+        <Card padding="md" data-testid="geographic-map-card">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Geographic Distribution</h3>
+          {geographicAnalyticsLoading ? (
+            <div className="flex items-center justify-center h-[300px]">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : mapFacilities && mapFacilities.length > 0 ? (
+            <GeographicMap facilities={mapFacilities} isLoading={false} />
+          ) : (
+            <div className="flex items-center justify-center h-[300px] text-gray-500">
+              No facility data available
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Analytics Tabs */}
+      <Card padding="none" data-testid="analytics-tabs">
         <div className="border-b border-gray-200">
           <nav className="flex overflow-x-auto -mb-px" aria-label="Tabs">
             {tabs.map((tab, index) => (
@@ -332,6 +606,7 @@ const Dashboard = () => {
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }
                 `}
+                data-testid={`tab-${tab.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 {tab}
               </button>
@@ -374,11 +649,7 @@ const Dashboard = () => {
                 />
               )}
               {activeTab === 4 && (
-                <FacilityAnalyticsTab
-                  analytics={facAnalytics}
-                  facilities={facilities}
-                  navigate={navigate}
-                />
+                <FacilityAnalyticsTab analytics={facAnalytics} facilities={facilities} navigate={navigate} />
               )}
               {activeTab === 5 && <AgentAnalyticsTab analytics={agAnalytics} />}
               {activeTab === 6 && (
@@ -398,124 +669,34 @@ const Dashboard = () => {
           )}
         </div>
       </Card>
-
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/investigations')}>
-          <div className="text-center">
-            <div className="flex items-center justify-center space-x-2 mb-2">
-              <FolderOpenIcon className="h-5 w-5 text-primary-600" />
-              <p className="text-sm font-medium text-gray-600">Total Investigations</p>
-            </div>
-            <p className="text-4xl font-bold text-primary-600 mt-2">{stats?.total_investigations || 0}</p>
-            <p className="text-xs text-gray-500 mt-1">
-              {stats?.active_investigations || 0} active • {stats?.completed_investigations || 0} completed
-            </p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">Completion Rate</p>
-            <p className="text-4xl font-bold text-green-600 mt-2">
-              {invAnalytics?.completion_rate?.toFixed(0) || 0}%
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {invAnalytics?.completed || 0} of {invAnalytics?.total_investigations || 0} resolved
-            </p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">Avg. Duration</p>
-            <p className="text-4xl font-bold text-blue-600 mt-2">
-              {invAnalytics?.average_duration_days?.toFixed(0) || 0}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">Days to completion</p>
-          </div>
-        </Card>
-
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/tigers')}>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">Total Tigers</p>
-            <p className="text-4xl font-bold text-purple-600 mt-2">
-              {stats?.total_tigers || tigAnalytics?.total_tigers || 0}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {tigAnalytics?.identification_rate?.toFixed(0) || 0}% identification rate
-            </p>
-          </div>
-        </Card>
-      </div>
-
-      {/* Additional Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/facilities')}>
-          <div className="text-center">
-            <div className="flex items-center justify-center space-x-2 mb-2">
-              <BuildingOfficeIcon className="h-5 w-5 text-green-600" />
-              <p className="text-sm font-medium text-gray-600">Total Facilities</p>
-            </div>
-            <p className="text-4xl font-bold text-green-600 mt-2">{stats?.total_facilities || facAnalytics?.total_facilities || 0}</p>
-            <p className="text-xs text-gray-500 mt-1">
-              {facAnalytics?.avg_tigers_per_facility?.toFixed(1) || 0} avg tigers/facility
-            </p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">Total Evidence</p>
-            <p className="text-4xl font-bold text-orange-600 mt-2">
-              {evAnalytics?.total_evidence || 0}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {evAnalytics?.high_relevance_count || 0} high relevance
-            </p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">Verification Tasks</p>
-            <p className="text-4xl font-bold text-indigo-600 mt-2">
-              {verAnalytics?.total_tasks || 0}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {verAnalytics?.pending || 0} pending • {verAnalytics?.approved || 0} approved
-            </p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-600">Agent Steps</p>
-            <p className="text-4xl font-bold text-teal-600 mt-2">
-              {agAnalytics?.total_steps || 0}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {agAnalytics?.unique_agents || 0} unique agents
-            </p>
-          </div>
-        </Card>
-      </div>
     </div>
   )
 }
 
 // Investigation Analytics Tab Component
 const InvestigationAnalyticsTab = ({
-  _analytics,
+  analytics: _analytics,
   investigationsByStatus,
   investigationsByPriority,
   investigationsTimeline,
   investigations,
   navigate,
-}: any) => {
+}: {
+  analytics: unknown
+  investigationsByStatus: Array<{ name: string; value: number }>
+  investigationsByPriority: Array<{ name: string; value: number }>
+  investigationsTimeline: Array<{ date: string; count: number }>
+  investigations: Array<{
+    id: string
+    title?: string
+    description?: string
+    status: string
+  }>
+  navigate: (path: string) => void
+}) => {
   void _analytics // Reserved for future analytics features
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="investigation-analytics-tab">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Investigations by Status</h3>
@@ -531,7 +712,7 @@ const InvestigationAnalyticsTab = ({
                 fill="#8884d8"
                 dataKey="value"
               >
-                {investigationsByStatus.map((_entry: any, index: number) => (
+                {investigationsByStatus.map((_entry, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -569,11 +750,12 @@ const InvestigationAnalyticsTab = ({
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Investigations</h3>
           <div className="space-y-3 max-h-[300px] overflow-y-auto">
-            {investigations.map((investigation: any) => (
+            {investigations.map((investigation) => (
               <div
                 key={investigation.id}
                 className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                 onClick={() => navigate && navigate(`/investigations/${investigation.id}`)}
+                data-testid={`investigation-item-${investigation.id}`}
               >
                 <div className="flex items-center space-x-3 flex-1">
                   <FolderOpenIcon className="h-5 w-5 text-primary-600" />
@@ -589,8 +771,8 @@ const InvestigationAnalyticsTab = ({
                     investigation.status === 'in_progress'
                       ? 'info'
                       : investigation.status === 'completed'
-                      ? 'success'
-                      : 'default'
+                        ? 'success'
+                        : 'default'
                   }
                 >
                   {investigation.status}
@@ -605,7 +787,20 @@ const InvestigationAnalyticsTab = ({
 }
 
 // Evidence & Verification Analytics Tab Component
-const EvidenceVerificationAnalyticsTab = ({ evidenceAnalytics, verificationAnalytics }: any) => {
+const EvidenceVerificationAnalyticsTab = ({
+  evidenceAnalytics,
+  verificationAnalytics,
+}: {
+  evidenceAnalytics?: {
+    by_type?: Record<string, number>
+    total_evidence?: number
+  }
+  verificationAnalytics?: {
+    by_status?: Record<string, number>
+    total_tasks?: number
+    average_completion_time?: number
+  }
+}) => {
   const evidenceByType = evidenceAnalytics?.by_type
     ? Object.entries(evidenceAnalytics.by_type).map(([name, value]) => ({
         name,
@@ -621,7 +816,7 @@ const EvidenceVerificationAnalyticsTab = ({ evidenceAnalytics, verificationAnaly
     : []
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="evidence-verification-tab">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Evidence by Type</h3>
@@ -637,7 +832,7 @@ const EvidenceVerificationAnalyticsTab = ({ evidenceAnalytics, verificationAnaly
                 fill="#8884d8"
                 dataKey="value"
               >
-                {evidenceByType.map((_entry: any, index: number) => (
+                {evidenceByType.map((_entry, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -663,15 +858,11 @@ const EvidenceVerificationAnalyticsTab = ({ evidenceAnalytics, verificationAnaly
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <p className="text-sm text-gray-600">Total Evidence</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">
-            {evidenceAnalytics?.total_evidence || 0}
-          </p>
+          <p className="text-3xl font-bold text-gray-900 mt-2">{evidenceAnalytics?.total_evidence || 0}</p>
         </Card>
         <Card>
           <p className="text-sm text-gray-600">Total Verification Tasks</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">
-            {verificationAnalytics?.total_tasks || 0}
-          </p>
+          <p className="text-3xl font-bold text-gray-900 mt-2">{verificationAnalytics?.total_tasks || 0}</p>
         </Card>
         <Card>
           <p className="text-sm text-gray-600">Avg Completion Time</p>
@@ -685,7 +876,25 @@ const EvidenceVerificationAnalyticsTab = ({ evidenceAnalytics, verificationAnaly
 }
 
 // Geographic Analytics Tab Component
-const GeographicAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
+const GeographicAnalyticsTab = ({
+  analytics,
+  facilities,
+  navigate,
+}: {
+  analytics?: {
+    facilities_by_state?: Record<string, number>
+    investigations_by_location?: Array<{ location: string; count: number }>
+  }
+  facilities: Array<{
+    id: string
+    exhibitor_name?: string
+    name?: string
+    city?: string
+    state?: string
+    tiger_count?: number
+  }>
+  navigate: (path: string) => void
+}) => {
   const facilitiesByState = analytics?.facilities_by_state
     ? Object.entries(analytics.facilities_by_state)
         .map(([state, count]) => ({
@@ -696,14 +905,20 @@ const GeographicAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
         .slice(0, 10)
     : []
 
+  // Transform facilities for GeographicMap (requires 'name' property)
+  const mapFacilities = facilities.map((f) => ({
+    id: f.id,
+    name: f.exhibitor_name || f.name || 'Unknown',
+    state: f.state,
+    city: f.city,
+    tiger_count: f.tiger_count,
+  }))
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="geographic-tab">
       {/* Map Visualization */}
-      {facilities && facilities.length > 0 && (
-        <GeographicMap
-          facilities={facilities}
-          isLoading={false}
-        />
+      {mapFacilities && mapFacilities.length > 0 && (
+        <GeographicMap facilities={mapFacilities} isLoading={false} />
       )}
 
       {/* Chart Visualization */}
@@ -722,11 +937,9 @@ const GeographicAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
 
       {analytics?.investigations_by_location && (
         <Card>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Investigations by Location
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Investigations by Location</h3>
           <div className="space-y-2">
-            {analytics.investigations_by_location.slice(0, 10).map((loc: any, idx: number) => (
+            {analytics.investigations_by_location.slice(0, 10).map((loc, idx: number) => (
               <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                 <span className="text-sm text-gray-700">{loc.location}</span>
                 <Badge variant="info">{loc.count}</Badge>
@@ -742,13 +955,14 @@ const GeographicAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Facilities</h3>
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {[...facilities]
-              .sort((a: any, b: any) => (b.tiger_count || 0) - (a.tiger_count || 0))
+              .sort((a, b) => (b.tiger_count || 0) - (a.tiger_count || 0))
               .slice(0, 10)
-              .map((facility: any) => (
+              .map((facility) => (
                 <div
                   key={facility.id}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                   onClick={() => navigate && navigate(`/facilities/${facility.id}`)}
+                  data-testid={`facility-item-${facility.id}`}
                 >
                   <div className="flex items-center space-x-3 flex-1">
                     <BuildingOfficeIcon className="h-5 w-5 text-green-600" />
@@ -774,7 +988,19 @@ const GeographicAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
 }
 
 // Tiger Analytics Tab Component
-const TigerAnalyticsTab = ({ analytics, tigerIdentifications, navigate }: any) => {
+const TigerAnalyticsTab = ({
+  analytics,
+  tigerIdentifications,
+  navigate,
+}: {
+  analytics?: {
+    by_status?: Record<string, number>
+    total_tigers?: number
+    identification_rate?: number
+  }
+  tigerIdentifications: Array<{ date: string; count: number }>
+  navigate: (path: string) => void
+}) => {
   const tigersByStatus = analytics?.by_status
     ? Object.entries(analytics.by_status).map(([name, value]) => ({
         name,
@@ -783,7 +1009,7 @@ const TigerAnalyticsTab = ({ analytics, tigerIdentifications, navigate }: any) =
     : []
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="tiger-analytics-tab">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Tiger Identifications</h3>
@@ -812,7 +1038,7 @@ const TigerAnalyticsTab = ({ analytics, tigerIdentifications, navigate }: any) =
                 fill="#8884d8"
                 dataKey="value"
               >
-                {tigersByStatus.map((_entry: any, index: number) => (
+                {tigersByStatus.map((_entry, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -833,9 +1059,12 @@ const TigerAnalyticsTab = ({ analytics, tigerIdentifications, navigate }: any) =
             {analytics?.identification_rate?.toFixed(0) || 0}%
           </p>
         </Card>
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate && navigate('/tigers')}>
+        <Card
+          className="cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => navigate && navigate('/tigers')}
+        >
           <p className="text-sm text-gray-600">View All Tigers</p>
-          <p className="text-lg font-semibold text-primary-600 mt-2">→ Browse Tigers</p>
+          <p className="text-lg font-semibold text-primary-600 mt-2">Browse Tigers</p>
         </Card>
       </div>
     </div>
@@ -843,7 +1072,27 @@ const TigerAnalyticsTab = ({ analytics, tigerIdentifications, navigate }: any) =
 }
 
 // Facility Analytics Tab Component
-const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
+const FacilityAnalyticsTab = ({
+  analytics,
+  facilities,
+  navigate,
+}: {
+  analytics?: {
+    total_facilities?: number
+    total_tigers?: number
+    avg_tigers_per_facility?: number
+    state_distribution?: Record<string, number>
+  }
+  facilities: Array<{
+    id: string
+    exhibitor_name?: string
+    name?: string
+    city?: string
+    state?: string
+    tiger_count?: number
+  }>
+  navigate: (path: string) => void
+}) => {
   const facilitiesByState = analytics?.state_distribution
     ? Object.entries(analytics.state_distribution)
         .map(([state, count]) => ({
@@ -855,23 +1104,19 @@ const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
     : []
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="facility-analytics-tab">
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <div className="text-center">
             <p className="text-sm font-medium text-gray-600">Total Facilities</p>
-            <p className="text-4xl font-bold text-primary-600 mt-2">
-              {analytics?.total_facilities || 0}
-            </p>
+            <p className="text-4xl font-bold text-primary-600 mt-2">{analytics?.total_facilities || 0}</p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
             <p className="text-sm font-medium text-gray-600">Total Tigers</p>
-            <p className="text-4xl font-bold text-green-600 mt-2">
-              {analytics?.total_tigers || 0}
-            </p>
+            <p className="text-4xl font-bold text-green-600 mt-2">{analytics?.total_tigers || 0}</p>
           </div>
         </Card>
         <Card>
@@ -882,10 +1127,13 @@ const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
             </p>
           </div>
         </Card>
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate && navigate('/facilities')}>
+        <Card
+          className="cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => navigate && navigate('/facilities')}
+        >
           <div className="text-center">
             <p className="text-sm font-medium text-gray-600">View All Facilities</p>
-            <p className="text-lg font-semibold text-primary-600 mt-2">→ Browse</p>
+            <p className="text-lg font-semibold text-primary-600 mt-2">Browse</p>
           </div>
         </Card>
       </div>
@@ -919,7 +1167,7 @@ const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
                 fill="#8884d8"
                 dataKey="count"
               >
-                {facilitiesByState.slice(0, 8).map((_entry: any, index: number) => (
+                {facilitiesByState.slice(0, 8).map((_entry, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -934,23 +1182,20 @@ const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Top Facilities by Tiger Count</h3>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigate && navigate('/facilities')}
-            >
+            <Button variant="secondary" size="sm" onClick={() => navigate && navigate('/facilities')}>
               View All
             </Button>
           </div>
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {[...facilities]
-              .sort((a: any, b: any) => (b.tiger_count || 0) - (a.tiger_count || 0))
+              .sort((a, b) => (b.tiger_count || 0) - (a.tiger_count || 0))
               .slice(0, 15)
-              .map((facility: any) => (
+              .map((facility) => (
                 <div
                   key={facility.id}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                   onClick={() => navigate && navigate(`/facilities/${facility.id}`)}
+                  data-testid={`top-facility-item-${facility.id}`}
                 >
                   <div className="flex items-center space-x-3 flex-1">
                     <BuildingOfficeIcon className="h-5 w-5 text-green-600" />
@@ -976,11 +1221,21 @@ const FacilityAnalyticsTab = ({ analytics, facilities, navigate }: any) => {
 }
 
 // Agent Analytics Tab Component
-const AgentAnalyticsTab = ({ analytics }: any) => {
+const AgentAnalyticsTab = ({
+  analytics,
+}: {
+  analytics?: {
+    agent_performance?: unknown[]
+    agent_success_rates?: Record<string, { success_rate: number; total: number }>
+    agent_activity?: Record<string, number>
+    total_steps?: number
+    unique_agents?: number
+  }
+}) => {
   const _agentPerformance = analytics?.agent_performance || []
   void _agentPerformance // Reserved for agent performance chart
   const agentSuccessRates = analytics?.agent_success_rates
-    ? Object.entries(analytics.agent_success_rates).map(([agent, data]: [string, any]) => ({
+    ? Object.entries(analytics.agent_success_rates).map(([agent, data]) => ({
         agent,
         success_rate: data.success_rate || 0,
         total: data.total || 0,
@@ -988,7 +1243,7 @@ const AgentAnalyticsTab = ({ analytics }: any) => {
     : []
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="agent-analytics-tab">
       <Card>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Agent Success Rates</h3>
         <ResponsiveContainer width="100%" height={300}>
@@ -1007,7 +1262,7 @@ const AgentAnalyticsTab = ({ analytics }: any) => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Agent Activity</h3>
           <div className="space-y-2">
             {analytics?.agent_activity &&
-              Object.entries(analytics.agent_activity).map(([agent, count]: [string, any]) => (
+              Object.entries(analytics.agent_activity).map(([agent, count]) => (
                 <div key={agent} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                   <span className="text-sm text-gray-700">{agent}</span>
                   <Badge variant="info">{count}</Badge>
@@ -1038,7 +1293,28 @@ const ModelPerformanceTab = ({
   isBenchmarking,
   benchmarkLoading,
   handleBenchmark,
-}: any) => {
+}: {
+  modelsData?: { data?: { models?: Record<string, unknown> } }
+  modelsLoading: boolean
+  performanceData: Array<{
+    model: string
+    name: string
+    description: string
+    gpu: string
+    backend: string
+    type: string
+    rank1_accuracy: number | null
+    map: number | null
+    latency_ms: number | null
+    throughput: number | null
+  }>
+  selectedModel: string
+  setSelectedModel: (model: string) => void
+  benchmarkResults: { message: string; model: string } | null
+  isBenchmarking: boolean
+  benchmarkLoading: boolean
+  handleBenchmark: () => void
+}) => {
   const availableModels = modelsData?.data?.models || {}
   const modelNames = Object.keys(availableModels)
 
@@ -1051,7 +1327,7 @@ const ModelPerformanceTab = ({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="model-performance-tab">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Model Performance</h2>
@@ -1062,6 +1338,7 @@ const ModelPerformanceTab = ({
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            data-testid="model-select"
           >
             <option value="">Select model to benchmark</option>
             {modelNames.map((modelName) => (
@@ -1074,6 +1351,7 @@ const ModelPerformanceTab = ({
             variant="primary"
             onClick={handleBenchmark}
             disabled={!selectedModel || isBenchmarking || benchmarkLoading}
+            data-testid="benchmark-button"
           >
             {isBenchmarking || benchmarkLoading ? (
               <>
@@ -1096,17 +1374,19 @@ const ModelPerformanceTab = ({
             <h3 className="text-xl font-semibold">Accuracy Comparison</h3>
           </div>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={performanceData.filter((d: { rank1_accuracy: number | null }) => d.rank1_accuracy !== null)}>
+            <BarChart data={performanceData.filter((d) => d.rank1_accuracy !== null)}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis domain={[0, 1]} />
-              <Tooltip formatter={(value: number) => value !== null ? `${(value * 100).toFixed(1)}%` : 'N/A'} />
+              <Tooltip
+                formatter={(value: number) => (value !== null ? `${(value * 100).toFixed(1)}%` : 'N/A')}
+              />
               <Legend />
               <Bar dataKey="rank1_accuracy" fill="#3b82f6" name="Rank-1 Accuracy" />
               <Bar dataKey="map" fill="#10b981" name="mAP" />
             </BarChart>
           </ResponsiveContainer>
-          {performanceData.filter((d: { rank1_accuracy: number | null }) => d.rank1_accuracy === null).length > 0 && (
+          {performanceData.filter((d) => d.rank1_accuracy === null).length > 0 && (
             <p className="text-sm text-gray-500 mt-2">
               Performance metrics require benchmarks. Use the Model Testing page to run benchmarks.
             </p>
@@ -1140,7 +1420,7 @@ const ModelPerformanceTab = ({
           <h3 className="text-xl font-semibold">Model Performance Summary</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full divide-y divide-gray-200" data-testid="model-performance-table">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1164,8 +1444,8 @@ const ModelPerformanceTab = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {performanceData.map((model: any, index: number) => (
-                <tr key={index} className="hover:bg-gray-50">
+              {performanceData.map((model, index: number) => (
+                <tr key={index} className="hover:bg-gray-50" data-testid={`model-row-${model.model}`}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     <div>
                       <div className="font-medium">{model.name || model.model}</div>
@@ -1196,7 +1476,7 @@ const ModelPerformanceTab = ({
 
       {/* Benchmark Results */}
       {benchmarkResults && (
-        <Card>
+        <Card data-testid="benchmark-results">
           <h3 className="text-xl font-semibold mb-4">Benchmark Results</h3>
           <Alert type="info">{benchmarkResults.message}</Alert>
         </Card>
@@ -1207,8 +1487,12 @@ const ModelPerformanceTab = ({
         <Card>
           <h3 className="text-xl font-semibold mb-4">Model Information</h3>
           <div className="space-y-2">
-            {performanceData.map((model: any) => (
-              <div key={model.model} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            {performanceData.map((model) => (
+              <div
+                key={model.model}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                data-testid={`model-info-${model.model}`}
+              >
                 <div>
                   <span className="font-medium text-gray-900">{model.name || model.model}</span>
                   <span className="text-sm text-gray-500 ml-2">({model.gpu})</span>
@@ -1218,7 +1502,8 @@ const ModelPerformanceTab = ({
             ))}
           </div>
           <p className="text-sm text-gray-500 mt-4">
-            Performance metrics require benchmarks. Use the Model Testing page to run benchmarks and compare models.
+            Performance metrics require benchmarks. Use the Model Testing page to run benchmarks and compare
+            models.
           </p>
         </Card>
       )}

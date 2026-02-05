@@ -48,7 +48,7 @@ class CVWC2019ReIDModel(BaseReIDModel):
     @property
     def embedding_dim(self) -> int:
         """Get the embedding dimension for this model."""
-        return 3072  # CVWC2019 uses 3072-dimensional embeddings
+        return 2048  # Global stream output (primary embedding)
 
     @property
     def similarity_threshold(self) -> float:

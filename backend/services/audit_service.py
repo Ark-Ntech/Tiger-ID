@@ -1,6 +1,7 @@
 """Audit logging service for comprehensive system tracking"""
 
-from typing import Dict, Any, Optional, List
+import json
+from typing import Dict, Any, Optional, List, Union
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -21,9 +22,9 @@ class AuditService:
     def log_action(
         self,
         action_type: str,
-        user_id: Optional[UUID] = None,
+        user_id: Optional[Union[UUID, str]] = None,
         resource_type: Optional[str] = None,
-        resource_id: Optional[UUID] = None,
+        resource_id: Optional[Union[UUID, str]] = None,
         action_details: Optional[Dict[str, Any]] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
@@ -32,7 +33,7 @@ class AuditService:
     ) -> AuditLog:
         """
         Log an action to the audit log
-        
+
         Args:
             action_type: Type of action (e.g., 'investigation_created', 'evidence_added')
             user_id: User who performed the action
@@ -43,16 +44,23 @@ class AuditService:
             user_agent: User agent string
             status: Action status ('success', 'failed', 'error')
             error_message: Error message if status is not 'success'
-        
+
         Returns:
             Created audit log entry
         """
+        # Convert UUIDs to strings for SQLite compatibility
+        user_id_str = str(user_id) if user_id else None
+        resource_id_str = str(resource_id) if resource_id else None
+
+        # Serialize action_details dict to JSON string
+        action_details_json = json.dumps(action_details) if action_details else None
+
         audit_entry = AuditLog(
-            user_id=user_id,
+            user_id=user_id_str,
             action_type=action_type,
             resource_type=resource_type,
-            resource_id=resource_id,
-            action_details=action_details or {},
+            resource_id=resource_id_str,
+            action_details=action_details_json,
             ip_address=ip_address,
             user_agent=user_agent,
             status=status,

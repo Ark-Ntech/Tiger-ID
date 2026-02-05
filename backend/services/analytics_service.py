@@ -42,13 +42,14 @@ class AnalyticsService:
             Investigation analytics dictionary
         """
         query = self.session.query(Investigation)
-        
+
         if start_date:
             query = query.filter(Investigation.created_at >= start_date)
         if end_date:
             query = query.filter(Investigation.created_at <= end_date)
         if user_id:
-            query = query.filter(Investigation.created_by == user_id)
+            # Convert UUID to string for SQLite comparison
+            query = query.filter(Investigation.created_by == str(user_id))
         
         investigations = query.all()
         

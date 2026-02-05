@@ -16,6 +16,7 @@ import ModelWeights from './pages/ModelWeights'
 import FineTuning from './pages/FineTuning'
 import DatasetManagement from './pages/DatasetManagement'
 import Verification from './pages/Verification'
+import Discovery from './pages/Discovery'
 import PasswordReset from './pages/PasswordReset'
 import SearchResults from './pages/SearchResults'
 import NotFound from './pages/NotFound'
@@ -48,6 +49,7 @@ function App() {
           <Route path="finetuning" element={<FineTuning />} />
           <Route path="dataset-management" element={<DatasetManagement />} />
           <Route path="verification" element={<Verification />} />
+          <Route path="discovery" element={<Discovery />} />
           {/* Redirect obsolete routes to Investigation 2.0 */}
           <Route path="investigations" element={<Navigate to="/investigation2" replace />} />
           <Route path="investigations/:id" element={<Navigate to="/investigation2" replace />} />

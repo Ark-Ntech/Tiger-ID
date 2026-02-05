@@ -154,9 +154,11 @@ class TigerRepository(BaseRepository[Tiger]):
         Returns:
             List of Tiger objects
         """
+        # Convert enum to its string value for SQLite compatibility
+        status_value = status.value if hasattr(status, 'value') else status
         return (
             self.db.query(Tiger)
-            .filter(Tiger.status == status)
+            .filter(Tiger.status == status_value)
             .all()
         )
 

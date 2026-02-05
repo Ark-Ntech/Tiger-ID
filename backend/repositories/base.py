@@ -243,9 +243,14 @@ class BaseRepository(Generic[T]):
         Returns:
             List of matching entities
         """
+        from enum import Enum
+
         query = self.db.query(self.model_class)
         for field, value in kwargs.items():
             if hasattr(self.model_class, field):
+                # Convert Enum values to their string values for SQLite compatibility
+                if isinstance(value, Enum):
+                    value = value.value
                 query = query.filter(getattr(self.model_class, field) == value)
         return query.all()
 
@@ -258,9 +263,14 @@ class BaseRepository(Generic[T]):
         Returns:
             First matching entity or None
         """
+        from enum import Enum
+
         query = self.db.query(self.model_class)
         for field, value in kwargs.items():
             if hasattr(self.model_class, field):
+                # Convert Enum values to their string values for SQLite compatibility
+                if isinstance(value, Enum):
+                    value = value.value
                 query = query.filter(getattr(self.model_class, field) == value)
         return query.first()
 
@@ -282,34 +292,47 @@ class BaseRepository(Generic[T]):
         Returns:
             Query with filters applied
         """
+        from enum import Enum
+
         for criteria in filters:
             if not hasattr(self.model_class, criteria.field):
                 continue
 
             column = getattr(self.model_class, criteria.field)
 
+            # Convert Enum values to their string values for SQLite compatibility
+            value = criteria.value
+            if isinstance(value, Enum):
+                value = value.value
+
             if criteria.operator == "eq":
-                query = query.filter(column == criteria.value)
+                query = query.filter(column == value)
             elif criteria.operator == "ne":
-                query = query.filter(column != criteria.value)
+                query = query.filter(column != value)
             elif criteria.operator == "gt":
-                query = query.filter(column > criteria.value)
+                query = query.filter(column > value)
             elif criteria.operator == "gte":
-                query = query.filter(column >= criteria.value)
+                query = query.filter(column >= value)
             elif criteria.operator == "lt":
-                query = query.filter(column < criteria.value)
+                query = query.filter(column < value)
             elif criteria.operator == "lte":
-                query = query.filter(column <= criteria.value)
+                query = query.filter(column <= value)
             elif criteria.operator == "like":
-                query = query.filter(column.like(f"%{criteria.value}%"))
+                query = query.filter(column.like(f"%{value}%"))
             elif criteria.operator == "ilike":
-                query = query.filter(column.ilike(f"%{criteria.value}%"))
+                query = query.filter(column.ilike(f"%{value}%"))
             elif criteria.operator == "in":
-                query = query.filter(column.in_(criteria.value))
+                # Convert list of enums to their values
+                if value and isinstance(value, list) and len(value) > 0 and isinstance(value[0], Enum):
+                    value = [v.value for v in value]
+                query = query.filter(column.in_(value))
             elif criteria.operator == "not_in":
-                query = query.filter(~column.in_(criteria.value))
+                # Convert list of enums to their values
+                if value and isinstance(value, list) and len(value) > 0 and isinstance(value[0], Enum):
+                    value = [v.value for v in value]
+                query = query.filter(~column.in_(value))
             elif criteria.operator == "is_null":
-                if criteria.value:
+                if value:
                     query = query.filter(column.is_(None))
                 else:
                     query = query.filter(column.isnot(None))

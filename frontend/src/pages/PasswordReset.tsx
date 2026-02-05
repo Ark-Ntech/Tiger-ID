@@ -3,11 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useAppDispatch } from '../app/hooks'
-import {
-  requestPasswordReset,
-  confirmPasswordReset,
-} from '../features/auth/authSlice'
+import { useAuth } from '../hooks/useAuth'
 import Button from '../components/common/Button'
 import Input from '../components/common/Input'
 import Alert from '../components/common/Alert'
@@ -16,22 +12,30 @@ const requestSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
 })
 
-const confirmSchema = z.object({
-  new_password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirm_password: z.string().min(8, 'Password must be at least 8 characters'),
-}).refine((data) => data.new_password === data.confirm_password, {
-  message: "Passwords don't match",
-  path: ["confirm_password"],
-})
+const confirmSchema = z
+  .object({
+    new_password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirm_password: z.string().min(8, 'Password must be at least 8 characters'),
+  })
+  .refine((data) => data.new_password === data.confirm_password, {
+    message: "Passwords don't match",
+    path: ['confirm_password'],
+  })
 
 type RequestForm = z.infer<typeof requestSchema>
 type ConfirmForm = z.infer<typeof confirmSchema>
 
 const PasswordReset = () => {
   const navigate = useNavigate()
-  const dispatch = useAppDispatch()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
+
+  const {
+    requestPasswordReset,
+    confirmPasswordReset,
+    isRequestingReset,
+    isConfirmingReset,
+  } = useAuth()
 
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +44,7 @@ const PasswordReset = () => {
   const {
     register: registerRequest,
     handleSubmit: handleSubmitRequest,
-    formState: { errors: requestErrors, isSubmitting: isRequestSubmitting },
+    formState: { errors: requestErrors },
   } = useForm<RequestForm>({
     resolver: zodResolver(requestSchema),
   })
@@ -49,7 +53,7 @@ const PasswordReset = () => {
   const {
     register: registerConfirm,
     handleSubmit: handleSubmitConfirm,
-    formState: { errors: confirmErrors, isSubmitting: isConfirmSubmitting },
+    formState: { errors: confirmErrors },
   } = useForm<ConfirmForm>({
     resolver: zodResolver(confirmSchema),
   })
@@ -57,10 +61,15 @@ const PasswordReset = () => {
   const onRequestSubmit = async (data: RequestForm) => {
     try {
       setError(null)
-      await dispatch(requestPasswordReset(data.email)).unwrap()
+      await requestPasswordReset(data.email)
       setSuccess(true)
     } catch (err: any) {
-      setError(err || 'Failed to send password reset email')
+      setError(
+        err?.data?.message ||
+          err?.data?.detail ||
+          err?.message ||
+          'Failed to send password reset email'
+      )
     }
   }
 
@@ -72,16 +81,16 @@ const PasswordReset = () => {
 
     try {
       setError(null)
-      await dispatch(
-        confirmPasswordReset({
-          token,
-          new_password: data.new_password,
-        })
-      ).unwrap()
+      await confirmPasswordReset(token, data.new_password)
       setSuccess(true)
       setTimeout(() => navigate('/login'), 3000)
     } catch (err: any) {
-      setError(err || 'Failed to reset password')
+      setError(
+        err?.data?.message ||
+          err?.data?.detail ||
+          err?.message ||
+          'Failed to reset password'
+      )
     }
   }
 
@@ -119,7 +128,10 @@ const PasswordReset = () => {
           )}
 
           {!success && !token && (
-            <form onSubmit={handleSubmitRequest(onRequestSubmit)} className="space-y-6">
+            <form
+              onSubmit={handleSubmitRequest(onRequestSubmit)}
+              className="space-y-6"
+            >
               <Input
                 label="Email Address"
                 type="email"
@@ -134,7 +146,7 @@ const PasswordReset = () => {
                 variant="primary"
                 className="w-full"
                 size="lg"
-                isLoading={isRequestSubmitting}
+                isLoading={isRequestingReset}
               >
                 Send Reset Link
               </Button>
@@ -142,7 +154,10 @@ const PasswordReset = () => {
           )}
 
           {!success && token && (
-            <form onSubmit={handleSubmitConfirm(onConfirmSubmit)} className="space-y-6">
+            <form
+              onSubmit={handleSubmitConfirm(onConfirmSubmit)}
+              className="space-y-6"
+            >
               <Input
                 label="New Password"
                 type="password"
@@ -166,7 +181,7 @@ const PasswordReset = () => {
                 variant="primary"
                 className="w-full"
                 size="lg"
-                isLoading={isConfirmSubmitting}
+                isLoading={isConfirmingReset}
               >
                 Reset Password
               </Button>
@@ -175,7 +190,10 @@ const PasswordReset = () => {
 
           {/* Back to Login */}
           <div className="mt-6 text-center">
-            <a href="/login" className="text-sm text-primary-600 hover:text-primary-700">
+            <a
+              href="/login"
+              className="text-sm text-primary-600 hover:text-primary-700"
+            >
               Back to Login
             </a>
           </div>
@@ -186,4 +204,3 @@ const PasswordReset = () => {
 }
 
 export default PasswordReset
-

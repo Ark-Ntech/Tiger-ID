@@ -30,30 +30,22 @@ Configuration is loaded in the following order (highest to lowest priority):
 
 ## Required Variables
 
-### Development
+### Development & Production
 
-| Variable | Description | Example |
+| Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/dbname` |
-| `REDIS_URL` | Redis connection string | `redis://localhost:6379/0` |
+| `DATABASE_URL` | SQLite database path | `sqlite:///data/tiger_id.db` |
+| `SECRET_KEY` | Application secret key | Must be changed in production, min 32 chars |
+| `JWT_SECRET_KEY` | JWT signing key | Must be changed in production, min 32 chars |
 
-### Production
-
-| Variable | Description | Validation |
-|----------|-------------|------------|
-| `SECRET_KEY` | Application secret key | Must be changed from default, min 32 chars |
-| `JWT_SECRET_KEY` | JWT signing key | Must be changed from default, min 32 chars |
-| `DATABASE_URL` | PostgreSQL connection string | Must start with `postgresql://` |
-| `REDIS_URL` | Redis connection string | Valid Redis URL format |
-
-**Note:** The application validates that secret keys are changed in production. If you see a validation error, ensure your production secrets are set correctly.
+**Note:** The application validates that secret keys are changed in production. DATABASE_URL must be a SQLite connection string starting with `sqlite:///`.
 
 ## Optional Variables
 
 See `.env.example` for a complete list of all available environment variables. Common optional variables include:
 
 ### External API Keys
-- `OMNIVINCI_API_KEY` - NVIDIA OmniVinci API key
+- `ANTHROPIC_API_KEY` - Anthropic Claude API key
 - `FIRECRAWL_API_KEY` - Firecrawl API key
 - `YOUTUBE_API_KEY` - YouTube Data API v3 key
 - `META_ACCESS_TOKEN` - Meta/Facebook Graph API token
@@ -65,6 +57,24 @@ See `.env.example` for a complete list of all available environment variables. C
 ### Model Configuration
 - `MODEL_DEVICE` - Device to run models on (`cuda` or `cpu`, default: `cuda`)
 - `BATCH_SIZE` - Batch size for model inference (default: `32`)
+
+### Modal GPU Infrastructure
+- `MODAL_ENABLED` - Enable Modal for GPU inference (default: `true`)
+- `MODAL_WORKSPACE` - Modal workspace name (default: `ark-ntech`)
+- `MODAL_APP_NAME` - Modal app name (default: `tiger-id-models`)
+- `MODAL_MAX_RETRIES` - Max retry attempts for failed requests (default: `3`)
+- `MODAL_TIMEOUT` - Request timeout in seconds (default: `120`)
+- `MODAL_QUEUE_MAX_SIZE` - Max requests to queue when unavailable (default: `100`)
+- `MODAL_FALLBACK_TO_QUEUE` - Queue requests on failure (default: `true`)
+
+### Discovery Pipeline
+- `RATE_LIMIT_BASE_INTERVAL` - Base seconds between requests per domain (default: `2.0`)
+- `RATE_LIMIT_MAX_BACKOFF` - Maximum backoff time in seconds (default: `60.0`)
+- `IMAGE_DEDUPLICATION_ENABLED` - Enable SHA256 deduplication (default: `true`)
+- `PLAYWRIGHT_ENABLED` - Enable Playwright for JS-heavy sites (default: `true`)
+- `PLAYWRIGHT_HEADLESS` - Run Playwright in headless mode (default: `true`)
+- `JS_HEAVY_THRESHOLD` - Number of indicators to trigger Playwright (default: `2`)
+- `DISCOVERY_MAX_GALLERY_PAGES` - Max gallery pages per facility (default: `5`)
 
 ## Security Best Practices
 
@@ -93,7 +103,8 @@ openssl rand -base64 32
 The application validates required variables on startup:
 - Secret keys must be at least 32 characters long
 - Production environment requires non-default secrets
-- Database URLs must be valid PostgreSQL connection strings
+- Database URL must be a valid SQLite connection string
+- sqlite-vec extension must be installed
 
 ### 4. Use Secrets Management
 
@@ -126,7 +137,12 @@ settings = get_settings()
 # Access nested settings
 db_url = settings.database.url
 jwt_secret = settings.authentication.jwt_secret_key
-api_key = settings.omnivinci.api_key
+api_key = settings.anthropic.api_key
+
+# Access Modal settings
+modal_workspace = settings.modal.workspace
+modal_app_name = settings.modal.app_name
+deployment_url = settings.modal.deployment_url  # Computed property
 ```
 
 ### Environment Variable Names
@@ -134,7 +150,7 @@ api_key = settings.omnivinci.api_key
 Environment variables use uppercase with underscores:
 - `DATABASE_URL` → `settings.database.url`
 - `JWT_SECRET_KEY` → `settings.authentication.jwt_secret_key`
-- `OMNIVINCI_API_KEY` → `settings.omnivinci.api_key`
+- `ANTHROPIC_API_KEY` → `settings.anthropic.api_key`
 
 ## Troubleshooting
 
@@ -156,9 +172,15 @@ If you see validation errors on startup:
 
 3. **Invalid database URL:**
    ```
-   ValueError: DATABASE_URL must start with postgresql://
+   ValueError: DATABASE_URL must be a SQLite connection string
    ```
-   **Solution:** Check your `DATABASE_URL` format
+   **Solution:** Ensure DATABASE_URL starts with `sqlite:///`
+
+4. **sqlite-vec not installed:**
+   ```
+   ValueError: sqlite-vec extension is required for vector search
+   ```
+   **Solution:** Install sqlite-vec: `pip install sqlite-vec`
 
 ### Environment Variables Not Loading
 

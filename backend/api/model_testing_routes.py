@@ -70,9 +70,9 @@ async def test_model(
         
         tiger_service = TigerService(db)
         
-        # Special models that don't need to be in TigerService (video analysis, detection)
-        special_models = ["omnivinci", "megadetector"]
-        
+        # Special models that don't need to be in TigerService (detection only)
+        special_models = ["megadetector"]
+
         if model_name:
             # Check if it's a special model or in available models
             if model_name not in tiger_service.get_available_models() and model_name not in special_models:
@@ -80,14 +80,9 @@ async def test_model(
                     status_code=400,
                     detail=f"Model '{model_name}' not available. Available: {', '.join(tiger_service.get_available_models() + special_models)}"
                 )
-            
+
             # Handle special models
-            if model_name == "omnivinci":
-                raise HTTPException(
-                    status_code=400,
-                    detail="OmniVinci is a video analysis model and requires video files, not images. Use the video analysis endpoint instead."
-                )
-            elif model_name == "megadetector":
+            if model_name == "megadetector":
                 raise HTTPException(
                     status_code=400,
                     detail="MegaDetector is a detection model. Use the detection endpoint instead."
@@ -167,29 +162,88 @@ async def evaluate_model(
         
         model = tiger_service._get_model(model_name)
         
-        # Prepare query images
-        query_data = []
+        model = tiger_service._get_model(model_name)
+
+        # Generate query embeddings
+        import numpy as np
+        from PIL import Image
+        import io
+        import time
+
+        query_embeddings = []
+        query_filenames = []
         for img in query_images:
-            # For evaluation, we need tiger_id labels
-            # In a real scenario, these would come from the dataset
-            query_data.append({
-                "path": img.filename,
-                "tiger_id": "unknown"  # Would need to be provided
-            })
-        
-        # Prepare gallery images
-        gallery_data = []
+            try:
+                image_bytes = await img.read()
+                image_obj = Image.open(io.BytesIO(image_bytes))
+
+                if hasattr(model, 'generate_embedding_from_bytes'):
+                    embedding = await model.generate_embedding_from_bytes(image_bytes)
+                else:
+                    embedding = await model.generate_embedding(image_obj)
+
+                if embedding is not None:
+                    query_embeddings.append(embedding)
+                    query_filenames.append(img.filename)
+            except Exception as e:
+                logger.warning(f"Failed to process query image {img.filename}: {e}")
+
+        # Generate gallery embeddings
+        gallery_embeddings = []
+        gallery_filenames = []
         for img in gallery_images:
-            gallery_data.append({
-                "path": img.filename,
-                "tiger_id": "unknown"  # Would need to be provided
+            try:
+                image_bytes = await img.read()
+                image_obj = Image.open(io.BytesIO(image_bytes))
+
+                if hasattr(model, 'generate_embedding_from_bytes'):
+                    embedding = await model.generate_embedding_from_bytes(image_bytes)
+                else:
+                    embedding = await model.generate_embedding(image_obj)
+
+                if embedding is not None:
+                    gallery_embeddings.append(embedding)
+                    gallery_filenames.append(img.filename)
+            except Exception as e:
+                logger.warning(f"Failed to process gallery image {img.filename}: {e}")
+
+        if not query_embeddings or not gallery_embeddings:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid embeddings could be generated from the images"
+            )
+
+        # Compute similarity matrix (cosine similarity)
+        query_matrix = np.vstack(query_embeddings)
+        gallery_matrix = np.vstack(gallery_embeddings)
+
+        # Normalize for cosine similarity
+        query_norm = query_matrix / (np.linalg.norm(query_matrix, axis=1, keepdims=True) + 1e-8)
+        gallery_norm = gallery_matrix / (np.linalg.norm(gallery_matrix, axis=1, keepdims=True) + 1e-8)
+
+        similarity_matrix = np.dot(query_norm, gallery_norm.T)
+
+        # Get top matches for each query
+        top_matches = []
+        for i, query_name in enumerate(query_filenames):
+            similarities = similarity_matrix[i]
+            sorted_indices = np.argsort(-similarities)
+            matches = [
+                {"gallery_image": gallery_filenames[j], "similarity": float(similarities[j])}
+                for j in sorted_indices[:5]
+            ]
+            top_matches.append({
+                "query_image": query_name,
+                "top_matches": matches
             })
-        
-        # Note: This is a simplified version
-        # Full evaluation would require ground truth labels
+
         return SuccessResponse(data={
-            "message": "Evaluation requires ground truth labels. Use /models/benchmark for performance testing.",
-            "model": model_name
+            "model": model_name,
+            "query_count": len(query_embeddings),
+            "gallery_count": len(gallery_embeddings),
+            "embedding_dim": query_matrix.shape[1],
+            "results": top_matches,
+            "note": "For mAP/CMC evaluation, provide ground truth labels via /models/benchmark"
         })
         
     except Exception as e:
@@ -228,20 +282,100 @@ async def compare_models(
                 detail=f"Invalid models: {invalid_models}. Available: {available_models}"
             )
         
-        # Prepare models dictionary
-        models = {}
+        # Read images into memory once
+        import numpy as np
+        from PIL import Image
+        import io
+        import time
+
+        query_bytes_list = []
+        for img in query_images:
+            query_bytes_list.append((img.filename, await img.read()))
+
+        gallery_bytes_list = []
+        for img in gallery_images:
+            gallery_bytes_list.append((img.filename, await img.read()))
+
+        # Compare models
+        model_results = {}
         for model_name in requested_models:
-            models[model_name] = tiger_service._get_model(model_name)
-        
-        # Prepare query and gallery data
-        # Note: This is simplified - full comparison requires ground truth
-        query_data = [{"path": img.filename, "tiger_id": "unknown"} for img in query_images]
-        gallery_data = [{"path": img.filename, "tiger_id": "unknown"} for img in gallery_images]
-        
+            try:
+                model = tiger_service._get_model(model_name)
+                start_time = time.time()
+
+                # Generate embeddings
+                query_embeddings = []
+                gallery_embeddings = []
+
+                for filename, img_bytes in query_bytes_list:
+                    try:
+                        image_obj = Image.open(io.BytesIO(img_bytes))
+                        if hasattr(model, 'generate_embedding_from_bytes'):
+                            embedding = await model.generate_embedding_from_bytes(img_bytes)
+                        else:
+                            embedding = await model.generate_embedding(image_obj)
+                        if embedding is not None:
+                            query_embeddings.append(embedding)
+                    except Exception as e:
+                        logger.warning(f"Model {model_name} failed on query {filename}: {e}")
+
+                for filename, img_bytes in gallery_bytes_list:
+                    try:
+                        image_obj = Image.open(io.BytesIO(img_bytes))
+                        if hasattr(model, 'generate_embedding_from_bytes'):
+                            embedding = await model.generate_embedding_from_bytes(img_bytes)
+                        else:
+                            embedding = await model.generate_embedding(image_obj)
+                        if embedding is not None:
+                            gallery_embeddings.append(embedding)
+                    except Exception as e:
+                        logger.warning(f"Model {model_name} failed on gallery {filename}: {e}")
+
+                total_time = time.time() - start_time
+
+                if query_embeddings and gallery_embeddings:
+                    query_matrix = np.vstack(query_embeddings)
+                    gallery_matrix = np.vstack(gallery_embeddings)
+
+                    # Compute average similarity
+                    query_norm = query_matrix / (np.linalg.norm(query_matrix, axis=1, keepdims=True) + 1e-8)
+                    gallery_norm = gallery_matrix / (np.linalg.norm(gallery_matrix, axis=1, keepdims=True) + 1e-8)
+                    similarity_matrix = np.dot(query_norm, gallery_norm.T)
+
+                    model_results[model_name] = {
+                        "success": True,
+                        "query_processed": len(query_embeddings),
+                        "gallery_processed": len(gallery_embeddings),
+                        "embedding_dim": query_matrix.shape[1],
+                        "avg_similarity": float(np.mean(similarity_matrix)),
+                        "max_similarity": float(np.max(similarity_matrix)),
+                        "min_similarity": float(np.min(similarity_matrix)),
+                        "processing_time_seconds": round(total_time, 3)
+                    }
+                else:
+                    model_results[model_name] = {
+                        "success": False,
+                        "error": "Failed to generate embeddings"
+                    }
+
+            except Exception as e:
+                logger.error(f"Error comparing model {model_name}: {e}")
+                model_results[model_name] = {
+                    "success": False,
+                    "error": str(e)
+                }
+
+        # Determine best model by processing success and speed
+        successful_models = {k: v for k, v in model_results.items() if v.get("success")}
+        best_model = None
+        if successful_models:
+            best_model = min(successful_models.keys(), key=lambda k: successful_models[k]["processing_time_seconds"])
+
         return SuccessResponse(data={
-            "message": "Model comparison requires ground truth labels. Use test datasets for full comparison.",
-            "models": requested_models,
-            "available_models": available_models
+            "models_compared": requested_models,
+            "results": model_results,
+            "best_model": best_model,
+            "note": "Best model determined by processing speed among successful models"
         })
         
     except HTTPException:
@@ -373,21 +507,20 @@ async def get_available_models(
                 "backend": "Modal",
                 "type": "detection"
             },
-            "omnivinci": {
-                "name": "OmniVinci",
-                "description": "Video+audio analysis (Open Source)",
-                "gpu": "A100-40GB",
+            "transreid": {
+                "name": "TransReID",
+                "description": "Vision Transformer ReID (ViT-Base)",
+                "gpu": "T4",
                 "backend": "Modal",
-                "type": "video_analysis",
-                "source": "https://huggingface.co/nvidia/omnivinci",
-                "license": "Apache 2.0"
+                "embedding_dim": 768,
+                "type": "reid"
             }
         }
-        
+
         # Filter to only available models
         models = {
             name: info for name, info in model_info.items()
-            if name in available_models or name in ["megadetector", "omnivinci"]
+            if name in available_models or name in ["megadetector", "transreid"]
         }
         
         return SuccessResponse(

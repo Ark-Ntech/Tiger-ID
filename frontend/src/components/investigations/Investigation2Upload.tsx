@@ -1,63 +1,90 @@
-import { useRef } from 'react'
+import { useRef, useCallback } from 'react'
 import Card from '../common/Card'
 import { PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { useInvestigation2 } from '../../context/Investigation2Context'
 
-interface Investigation2UploadProps {
-  image: File | null
-  imagePreview: string | null
-  context: {
-    location: string
-    date: string
-    notes: string
-  }
-  onImageUpload: (file: File) => void
-  onContextChange: (field: string, value: string) => void
-  disabled?: boolean
-}
-
-const Investigation2Upload = ({
-  image,
-  imagePreview,
-  context,
-  onImageUpload,
-  onContextChange,
-  disabled = false
-}: Investigation2UploadProps) => {
+/**
+ * Investigation 2.0 upload component.
+ * Uses context for state management instead of props.
+ */
+const Investigation2Upload = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const {
+    uploadedImage,
+    imagePreview,
+    context,
+    investigationId,
+    isLaunching,
+    setUploadedImage,
+    setImagePreview,
+    updateContext,
+  } = useInvestigation2()
 
-    if (disabled) return
+  // Disable interactions when investigation is running
+  const disabled = !!investigationId || isLaunching
 
-    const files = e.dataTransfer.files
-    if (files.length > 0) {
-      const file = files[0]
-      if (file.type.startsWith('image/')) {
-        onImageUpload(file)
+  const handleImageUpload = useCallback(
+    (file: File) => {
+      setUploadedImage(file)
+
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
       }
-    }
-  }
+      reader.readAsDataURL(file)
+    },
+    [setUploadedImage, setImagePreview]
+  )
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      if (disabled) return
+
+      const files = e.dataTransfer.files
+      if (files.length > 0) {
+        const file = files[0]
+        if (file.type.startsWith('image/')) {
+          handleImageUpload(file)
+        }
+      }
+    },
+    [disabled, handleImageUpload]
+  )
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-  }
+  }, [])
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      onImageUpload(files[0])
-    }
-  }
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (files && files.length > 0) {
+        handleImageUpload(files[0])
+      }
+    },
+    [handleImageUpload]
+  )
 
-  const handleRemoveImage = () => {
+  const handleRemoveImage = useCallback(() => {
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-    // Note: The parent component should handle resetting the image
-  }
+    setUploadedImage(null)
+    setImagePreview(null)
+  }, [setUploadedImage, setImagePreview])
+
+  const handleContextChange = useCallback(
+    (field: 'location' | 'date' | 'notes', value: string) => {
+      updateContext(field, value)
+    },
+    [updateContext]
+  )
 
   return (
     <Card>
@@ -102,9 +129,9 @@ const Investigation2Upload = ({
                   <XMarkIcon className="w-5 h-5" />
                 </button>
               )}
-              {image && (
+              {uploadedImage && (
                 <p className="mt-2 text-sm text-gray-600">
-                  {image.name} ({(image.size / 1024).toFixed(1)} KB)
+                  {uploadedImage.name} ({(uploadedImage.size / 1024).toFixed(1)} KB)
                 </p>
               )}
             </div>
@@ -131,8 +158,8 @@ const Investigation2Upload = ({
             </label>
             <input
               type="text"
-              value={context.location}
-              onChange={(e) => onContextChange('location', e.target.value)}
+              value={context.location || ''}
+              onChange={(e) => handleContextChange('location', e.target.value)}
               placeholder="e.g., Texas, USA"
               disabled={disabled}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
@@ -145,8 +172,8 @@ const Investigation2Upload = ({
             </label>
             <input
               type="date"
-              value={context.date}
-              onChange={(e) => onContextChange('date', e.target.value)}
+              value={context.date || ''}
+              onChange={(e) => handleContextChange('date', e.target.value)}
               disabled={disabled}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
@@ -157,8 +184,8 @@ const Investigation2Upload = ({
               Additional Notes
             </label>
             <textarea
-              value={context.notes}
-              onChange={(e) => onContextChange('notes', e.target.value)}
+              value={context.notes || ''}
+              onChange={(e) => handleContextChange('notes', e.target.value)}
               placeholder="Add any relevant information about this sighting..."
               rows={4}
               disabled={disabled}
@@ -172,4 +199,3 @@ const Investigation2Upload = ({
 }
 
 export default Investigation2Upload
-

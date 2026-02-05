@@ -1,0 +1,7 @@
+export { BasePage } from './base.page'
+export { LoginPage } from './login.page'
+export * from './tigers'
+export * from './investigations'
+export * from './facilities'
+export * from './verification'
+export * from './components'

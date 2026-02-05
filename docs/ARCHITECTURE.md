@@ -39,7 +39,7 @@ graph TB
         WebIntel[Web Intelligence Services]
         CVModels[Computer Vision Models]
         Services[Business Logic Services]
-        Jobs[Background Jobs Celery]
+        Jobs[Background Jobs]
         
         Agents --> Orch[Orchestrator Agent]
         Agents --> Research[Research Agent]
@@ -49,8 +49,7 @@ graph TB
     end
 
     subgraph Data["Data Layer"]
-        PG[("PostgreSQL<br/>pgvector<br/>Embeddings<br/>Audit Logs")]
-        Redis[("Redis<br/>Cache<br/>Sessions<br/>Job Queue")]
+        SQLite[("SQLite<br/>sqlite-vec<br/>Embeddings<br/>Audit Logs")]
     end
 
     subgraph External["External Services"]
@@ -70,8 +69,7 @@ graph TB
     Agents --> CVModels
     Agents --> Services
     Agents --> Jobs
-    Services --> PG
-    Services --> Redis
+    Services --> SQLite
     WebIntel --> Firecrawl
     WebIntel --> YouTube
     WebIntel --> Meta
@@ -217,14 +215,86 @@ graph TB
 - **YouTubeClient**: YouTube Data API v3 integration for video and channel intelligence
 - **MetaClient**: Meta Graph API integration for Facebook page and post intelligence
 
-### 5. Computer Vision Models
+### 5. Continuous Tiger Discovery Pipeline
+
+**Purpose:** Automatically discover and identify tigers from facility websites and web searches.
+
+> **See also:** [Discovery Pipeline Documentation](./DISCOVERY_PIPELINE.md) for detailed deployment and configuration guidance.
+
+**Components:**
+
+#### FacilityCrawlerService (`backend/services/facility_crawler_service.py`)
+- Crawls TPC reference facility websites for tiger images
+- Uses DuckDuckGo for web research and image search (no API keys required)
+- Automatic JS-heavy site detection with Playwright fallback
+
+#### ImagePipelineService (`backend/services/image_pipeline_service.py`)
+- Processes discovered images through the full identification pipeline
+- SHA256 deduplication prevents redundant GPU processing
+- Quality assessment via OpenCV before ML inference
+
+**Discovery Flow:**
+
+```mermaid
+flowchart LR
+    A[Facility<br/>Crawler] --> B{JS-Heavy<br/>Site?}
+    B -->|No| C[HTTP<br/>Request]
+    B -->|Yes| D[Playwright<br/>Render]
+    C --> E[Extract<br/>Images]
+    D --> E
+    E --> F{Duplicate<br/>Check}
+    F -->|Dup| G[Skip]
+    F -->|New| H[Quality<br/>Check]
+    H --> I[Tiger<br/>Detection]
+    I --> J[6-Model<br/>Ensemble]
+    J --> K[Match or<br/>Create Tiger]
+
+    style B fill:#fff3e0
+    style F fill:#e8f5e9
+    style J fill:#e3f2fd
+```
+
+**Rate Limiting:**
+
+The `RateLimiter` class provides per-domain request throttling:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| Base interval | 2 seconds | Minimum time between requests to same domain |
+| Max backoff | 60 seconds | Maximum wait time after repeated errors |
+| Backoff trigger | HTTP 429, 503, 520-524 | Status codes that increase backoff |
+| Recovery rate | 0.9x multiplier | Gradual backoff reduction on success |
+
+**JS-Heavy Site Detection:**
+
+Sites are classified as JavaScript-heavy if they contain 2+ indicators:
+- Framework markers: `react`, `angular`, `vue`, `__next_data__`, `ng-app`
+- Lazy loading: `loading="lazy"`, `data-src=`, `lazyload`
+- Hydration: `hydrate`, `createRoot`, `window.__NUXT__`
+
+**Image Deduplication:**
+
+```mermaid
+flowchart LR
+    A[Download<br/>Image] --> B[SHA256<br/>Hash]
+    B --> C{Hash in<br/>DB?}
+    C -->|Yes| D[Skip<br/>Processing]
+    C -->|No| E[Continue<br/>Pipeline]
+    E --> F[Store Hash<br/>with Image]
+
+    style C fill:#fff3e0
+    style D fill:#ffcdd2
+    style E fill:#c8e6c9
+```
+
+### 6. Computer Vision Models
 
 **Purpose:** Detect and identify tigers in images.
 
 **Models:**
 - **MegaDetector v5**: Wildlife detection model for cropping tigers
 - **Tiger Re-ID Model**: Siamese network for stripe pattern matching
-- **Vector Search**: pgvector for similarity search
+- **Vector Search**: sqlite-vec for similarity search
 
 **Model Pipeline:**
 
@@ -234,7 +304,7 @@ flowchart LR
     B --> C[Tiger Cropped<br/>from Image]
     C --> D[Re-ID Model<br/>Extracts Features]
     D --> E[Embedding Vector<br/>Generated]
-    E --> F[Vector Search<br/>pgvector]
+    E --> F[Vector Search<br/>sqlite-vec]
     F --> G[Similar Tigers<br/>Found]
     G --> H[Confidence<br/>Calculated]
     H --> I[Results Returned]
@@ -250,7 +320,7 @@ flowchart LR
     style I fill:#c8e6c9
 ```
 
-### 6. Database Layer (PostgreSQL)
+### 6. Database Layer (SQLite + sqlite-vec)
 
 **Purpose:** Persistent data storage with vector search capabilities.
 
@@ -260,7 +330,8 @@ flowchart LR
 - `investigation_steps` - Investigation workflow steps
 - `evidence` - Evidence items linked to investigations
 - `tigers` - Tiger records
-- `tiger_images` - Tiger images with embeddings
+- `tiger_images` - Tiger images with metadata
+- `vec_embeddings` - Vector embeddings (virtual table)
 - `facilities` - Facility information
 - `crawl_history` - Web crawl history
 - `notifications` - User notifications
@@ -268,30 +339,18 @@ flowchart LR
 - `verification_queue` - Human verification queue
 
 **Extensions:**
-- `pgvector` - Vector similarity search for embeddings
+- `sqlite-vec` - Vector similarity search for embeddings
+- WAL mode for concurrent read performance
 - Various indexes for performance optimization
 
-### 7. Caching Layer (Redis)
-
-**Purpose:** Improve performance through caching.
-
-**Use Cases:**
-- Web search results caching
-- Model inference result caching
-- Session storage
-- Celery job queue
-
-**Fallback:** In-memory cache if Redis unavailable
-
-### 8. Background Jobs (Celery)
+### 7. Background Jobs
 
 **Purpose:** Asynchronous task processing.
 
-**Job Types:**
-- News monitoring (scheduled)
-- Data synchronization (USDA, CITES, USFWS)
-- Web crawling (scheduled)
-- Model batch inference
+**Implementation:**
+- Modal serverless GPUs for ML inference
+- Threading for non-blocking operations
+- Async task runner for investigations
 
 ### 9. Security & Infrastructure
 
@@ -385,7 +444,7 @@ sequenceDiagram
     ReID-->>API: Embedding Vector
     
     API->>VectorSearch: Search Similar Tigers
-    VectorSearch->>Database: Query pgvector
+    VectorSearch->>Database: Query sqlite-vec
     Database-->>VectorSearch: Similar Tigers
     VectorSearch->>VectorSearch: Calculate Confidence Scores
     VectorSearch-->>API: Top Matches with Scores
@@ -424,20 +483,18 @@ sequenceDiagram
 ### Backend
 - **FastAPI** 0.109+ - API framework
 - **SQLAlchemy** 2.0+ - ORM
-- **Alembic** - Database migrations
-- **Celery** - Background jobs
-- **Redis** - Caching and job queue
+- **sqlite-vec** - Vector similarity search
 
 ### AI/ML
 - **PyTorch** - Deep learning framework
 - **Transformers** - Pre-trained models
-- **OmniVinci** (NVIDIA) - Multi-modal LLM orchestrator
+- **Claude** (Anthropic) - LLM orchestrator and report generation
 - **MegaDetector v5** - Wildlife detection
-- **Custom Siamese Networks** - Tiger Re-ID
+- **6-Model ReID Ensemble** - Tiger Re-ID (wildlife_tools, cvwc2019, transreid, megadescriptor_b, tiger_reid, rapid_reid)
 
 ### Database
-- **PostgreSQL** 15+ - Primary database
-- **pgvector** - Vector similarity search
+- **SQLite** - Primary database (embedded, no server required)
+- **sqlite-vec** - Vector similarity search extension
 
 ### Protocols
 - **MCP (Model Context Protocol)** - Tool integration
@@ -454,28 +511,20 @@ graph TB
     subgraph Dev["Development Environment"]
         DevAPI[FastAPI<br/>Local:8000]
         DevUI[React<br/>Local:5173]
-        DevWorker[Celery Worker<br/>Local]
+        DevDB[(SQLite<br/>data/tiger_id.db)]
     end
-    
-    subgraph Docker["Docker Compose"]
-        DevPostgres[(PostgreSQL<br/>5432)]
-        DevRedis[(Redis<br/>6379)]
-    end
-    
-    DevAPI --> DevPostgres
-    DevAPI --> DevRedis
-    DevWorker --> DevPostgres
-    DevWorker --> DevRedis
+
+    DevAPI --> DevDB
     DevUI --> DevAPI
-    
+
     style Dev fill:#e3f2fd
-    style Docker fill:#fff3e0
 ```
 
 **Characteristics:**
 - All services run locally
-- Docker Compose for infrastructure (PostgreSQL, Redis)
+- SQLite database (no Docker required for database)
 - Development mode with hot reloading
+- Optional Docker for containerized deployment
 
 ### Production
 
@@ -484,72 +533,50 @@ graph TB
     subgraph LB["Load Balancer"]
         Nginx[Nginx<br/>Reverse Proxy<br/>SSL/TLS]
     end
-    
+
     subgraph App["Application Layer"]
-        API1[FastAPI<br/>Instance 1]
-        API2[FastAPI<br/>Instance 2]
+        API[FastAPI<br/>API Server]
         UI[React Frontend]
     end
-    
-    subgraph Workers["Worker Layer"]
-        Worker1[Celery Worker 1]
-        Worker2[Celery Worker 2]
-        WorkerN[Celery Worker N]
-    end
-    
+
     subgraph Data["Data Layer"]
-        PG[(PostgreSQL<br/>Master)]
-        PGReplica[(PostgreSQL<br/>Read Replica)]
-        Redis[(Redis<br/>Cluster)]
+        SQLite[(SQLite<br/>tiger_id.db)]
     end
-    
+
+    subgraph Modal["Modal Cloud"]
+        GPU[GPU Workers<br/>ML Inference]
+    end
+
     subgraph Storage["Storage"]
-        S3[S3 Bucket<br/>Models & Data]
+        Volume[Persistent Volume<br/>Database & Models]
     end
-    
-    Nginx --> API1
-    Nginx --> API2
+
+    Nginx --> API
     Nginx --> UI
-    API1 --> PG
-    API2 --> PG
-    API1 --> Redis
-    API2 --> Redis
-    UI --> API1
-    UI --> API2
-    
-    Worker1 --> PG
-    Worker2 --> PG
-    WorkerN --> PG
-    Worker1 --> Redis
-    Worker2 --> Redis
-    WorkerN --> Redis
-    
-    API1 --> PGReplica
-    API2 --> PGReplica
-    
-    API1 --> S3
-    API2 --> S3
-    Worker1 --> S3
-    
+    API --> SQLite
+    API --> GPU
+    SQLite --> Volume
+    UI --> API
+
     style LB fill:#ffebee
     style App fill:#e3f2fd
-    style Workers fill:#fff3e0
     style Data fill:#e8f5e9
+    style Modal fill:#fff3e0
     style Storage fill:#f3e5f5
 ```
 
 **Characteristics:**
-- Docker containers for all services
+- Docker containers for API and frontend
 - Reverse proxy (Nginx) for routing
 - SSL/TLS encryption
-- Load balancing for API (optional)
-- Horizontal scaling for Celery workers
-- Persistent storage for models and data
+- SQLite database with persistent volume
+- Modal serverless GPUs for ML inference
+- No external database server required
 
 ## Scalability Considerations
 
 1. **API Scaling**: Multiple API instances behind load balancer
-2. **Worker Scaling**: Horizontal scaling of Celery workers
+2. **ML Scaling**: Modal serverless GPU workers scale automatically
 3. **Database Scaling**: Connection pooling, read replicas (future)
 4. **Cache Scaling**: Redis cluster (future)
 5. **Model Inference**: Batch processing, GPU allocation

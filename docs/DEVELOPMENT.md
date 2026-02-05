@@ -17,13 +17,13 @@ pip install -r requirements-dev.txt
 ### 2. Database Setup
 
 ```bash
-# Start database and Redis
-docker-compose up -d postgres redis
+# Install sqlite-vec extension
+pip install sqlite-vec
 
-# Run migrations
-alembic upgrade head
+# Initialize database (SQLite - no Docker required)
+python -c "from backend.database import init_db; init_db()"
 
-# Initialize database
+# Optional: populate with sample data
 python scripts/init_db.py
 ```
 
@@ -38,8 +38,7 @@ cd frontend
 npm install
 npm run dev
 
-# Run Celery worker
-celery -A backend.jobs.celery_app worker --loglevel=info
+# Background jobs run automatically via threading and Modal
 ```
 
 ## Development Workflow
@@ -51,7 +50,7 @@ backend/
   agents/          # AI agents (Research, Analysis, Validation, Reporting, Orchestrator)
   api/            # FastAPI endpoints
   database/       # Database models, migrations, connection
-  jobs/           # Celery background jobs
+  skills/         # Claude skills
   mcp_servers/    # MCP server implementations
   models/         # ML models (detection, re-identification)
   services/       # Business logic services
@@ -99,16 +98,11 @@ mypy backend/
 
 ### 1. Database Changes
 
-```bash
-# Create migration
-alembic revision --autogenerate -m "add new table"
+Database schema changes are made via SQLAlchemy models:
 
-# Review generated migration
-# Edit if needed
-
-# Apply migration
-alembic upgrade head
-```
+1. Update models in `backend/database/models.py`
+2. Re-initialize database: `python -c "from backend.database import init_db; init_db()"`
+3. SQLite schema updates are handled automatically via `create_all()`
 
 ### 2. Adding New Agent
 
@@ -149,13 +143,16 @@ from IPython import embed; embed()
 
 ```bash
 # Connect to database
-docker-compose exec postgres psql -U tiger_user -d tiger_investigation
+sqlite3 data/tiger_id.db
 
 # View tables
-\dt
+.tables
 
 # Query data
 SELECT * FROM tigers LIMIT 10;
+
+# Check schema
+.schema tigers
 ```
 
 ### Model Debugging
@@ -182,9 +179,9 @@ result = asyncio.run(model.detect(image_bytes))
 
 ### Database Connection
 
-- Verify PostgreSQL is running: `docker-compose ps postgres`
-- Check connection string in `.env`
-- Ensure migrations are applied
+- Verify database file exists: `ls data/tiger_id.db`
+- Check DATABASE_URL in `.env`: should be `sqlite:///data/tiger_id.db`
+- Re-initialize if needed: `python -c "from backend.database import init_db; init_db()"`
 
 ### Model Loading
 

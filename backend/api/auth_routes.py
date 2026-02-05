@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
+import re
 import secrets
 from datetime import datetime, timedelta
 
@@ -16,6 +17,8 @@ from backend.auth.auth import (
     authenticate_user,
     create_access_token,
     hash_password,
+    decode_token,
+    blacklist_token,
     get_current_user as get_current_user_dependency,
     ACCESS_TOKEN_EXPIRE_HOURS
 )
@@ -23,6 +26,40 @@ from backend.utils.email import get_email_service
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 security = HTTPBearer()
+
+
+def validate_password_strength(password: str) -> List[str]:
+    """
+    Validate password strength requirements.
+
+    Requirements:
+    - Minimum 8 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one digit
+    - At least one special character
+
+    Returns:
+        List of validation error messages (empty if password is valid)
+    """
+    errors = []
+
+    if len(password) < 8:
+        errors.append("Password must be at least 8 characters long")
+
+    if not re.search(r'[A-Z]', password):
+        errors.append("Password must contain at least one uppercase letter")
+
+    if not re.search(r'[a-z]', password):
+        errors.append("Password must contain at least one lowercase letter")
+
+    if not re.search(r'\d', password):
+        errors.append("Password must contain at least one digit")
+
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;\'`~]', password):
+        errors.append("Password must contain at least one special character")
+
+    return errors
 
 
 class LoginRequest(BaseModel):
@@ -143,7 +180,15 @@ async def register_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
+
+    # Validate password strength
+    password_errors = validate_password_strength(register_data.password)
+    if password_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="; ".join(password_errors)
+        )
+
     # Create new user
     hashed_password = hash_password(register_data.password)
     new_user = User(
@@ -151,10 +196,9 @@ async def register_endpoint(
         email=register_data.email,
         password_hash=hashed_password,
         role=register_data.role,
-        is_active=True,
-        full_name=register_data.full_name
+        is_active=True
     )
-    
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -193,20 +237,33 @@ async def get_current_user_info(
 
 @router.post("/logout")
 async def logout_endpoint(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: User = Depends(get_current_user_dependency)
 ):
     """
-    Logout endpoint (token invalidation handled client-side)
-    
+    Logout endpoint - invalidates the current token by adding it to the blacklist.
+
     Args:
+        credentials: Bearer token from Authorization header
         current_user: Current authenticated user
-    
+
     Returns:
         Success message
     """
-    # In a production system, you might want to blacklist tokens
-    # For now, logout is handled client-side by discarding the token
-    return {"message": "Logged out successfully"}
+    try:
+        # Decode token to get JTI
+        payload = decode_token(credentials.credentials)
+        jti = payload.get("jti")
+
+        if jti:
+            # Add token to blacklist
+            blacklist_token(jti)
+
+        return {"message": "Logged out successfully"}
+    except Exception:
+        # Even if we can't blacklist, consider logout successful
+        # (token may already be expired or invalid)
+        return {"message": "Logged out successfully"}
 
 
 @router.post("/verify")
@@ -216,34 +273,31 @@ async def verify_token_endpoint(
 ):
     """
     Verify if a token is valid
-    
+
     Args:
         credentials: Bearer token from Authorization header
         db: Database session
-    
+
     Returns:
         Token validity and user information
     """
     from backend.auth.auth import verify_token
-    
+
     token = credentials.credentials
-    payload = verify_token(token)
-    
-    if not payload:
+    user = verify_token(token, db)
+
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"
         )
-    
-    username = payload.get("sub")
-    user = db.query(User).filter(User.username == username).first()
-    
-    if not user or not user.is_active:
+
+    if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive"
         )
-    
+
     return {
         "valid": True,
         "user": {
@@ -347,13 +401,14 @@ async def confirm_password_reset(
             detail="Invalid or expired reset token"
         )
     
-    # Validate password
-    if len(reset_confirm.new_password) < 8:
+    # Validate password strength
+    password_errors = validate_password_strength(reset_confirm.new_password)
+    if password_errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 8 characters long"
+            detail="; ".join(password_errors)
         )
-    
+
     # Update user password
     user = db.query(User).filter(User.user_id == reset_token.user_id).first()
     if not user:

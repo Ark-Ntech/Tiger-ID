@@ -57,7 +57,12 @@ const Templates = () => {
                       // Create a new investigation first, then apply template
                       // For now, prompt for investigation ID or create new
                       const investigationId = prompt('Enter Investigation ID to apply template to (or leave blank to create new):')
-                      
+
+                      if (investigationId === null) {
+                        // User cancelled the prompt
+                        return
+                      }
+
                       if (investigationId) {
                         await applyTemplate({
                           template_id: template.template_id || template.id,

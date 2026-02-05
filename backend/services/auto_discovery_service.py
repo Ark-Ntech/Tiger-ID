@@ -14,6 +14,7 @@ When Gemini finds "Tiger at XYZ Facility" in web intelligence:
 This enables the database to grow organically with each investigation.
 """
 
+import json
 import logging
 from typing import Dict, Optional, List, Tuple, Any
 from datetime import datetime
@@ -191,14 +192,14 @@ class AutoDiscoveryService:
         logger.info(f"Creating new facility: {name}")
 
         facility = Facility(
-            facility_id=uuid4(),
+            facility_id=str(uuid4()),  # Convert to string for SQLite
             exhibitor_name=name,
             city=city,
             state=state,
             data_source="investigation_auto_discovery",
             is_reference_facility=False,  # Real discovered facility
             discovered_at=datetime.utcnow(),
-            discovered_by_investigation_id=investigation_id
+            discovered_by_investigation_id=str(investigation_id)  # Convert to string for SQLite
         )
 
         # Geocode facility
@@ -244,16 +245,17 @@ class AutoDiscoveryService:
         tiger_name = f"Tiger discovered {datetime.utcnow().strftime('%Y-%m-%d')} at {facility.exhibitor_name}"
 
         # Create tiger record
+        # Pass native Python objects - JSONList TypeDecorator handles serialization for tags
         tiger = Tiger(
-            tiger_id=uuid4(),
+            tiger_id=str(uuid4()),  # Convert to string for SQLite
             name=tiger_name,
-            origin_facility_id=facility.facility_id,
+            origin_facility_id=str(facility.facility_id) if facility.facility_id else None,  # Convert to string for SQLite
             last_seen_location=f"{facility.city}, {facility.state}" if facility.city else facility.state,
             last_seen_date=datetime.utcnow(),
             status=TigerStatus.active,
             is_reference=False,  # This is a real tiger
             discovered_at=datetime.utcnow(),
-            discovered_by_investigation_id=investigation_id,
+            discovered_by_investigation_id=str(investigation_id),  # Convert to string for SQLite
             discovery_confidence=confidence,
             tags=["discovered", "auto_identified"],
             notes=f"Discovered through Investigation {investigation_id} via Gemini web intelligence"
@@ -267,22 +269,22 @@ class AutoDiscoveryService:
         image_path = f"data/storage/investigations/{investigation_id}/discovered_tiger_{tiger.tiger_id}.jpg"
 
         tiger_image = TigerImage(
-            image_id=uuid4(),
-            tiger_id=tiger.tiger_id,
+            image_id=str(uuid4()),  # Convert to string for SQLite
+            tiger_id=str(tiger.tiger_id),  # Convert to string for SQLite
             image_path=image_path,
             embedding=stripe_embedding,
             side_view=SideView.unknown,
             verified=False,  # Requires human verification
             is_reference=False,  # Real tiger image
-            discovered_by_investigation_id=investigation_id,
-            meta_data={
+            discovered_by_investigation_id=str(investigation_id),  # Convert to string for SQLite
+            meta_data=json.dumps({  # Serialize to JSON string for SQLite
                 "source": "investigation_discovery",
                 "investigation_id": str(investigation_id),
                 "facility": facility.exhibitor_name,
                 "discovered_at": datetime.utcnow().isoformat(),
                 "confidence": confidence,
                 "bounding_box": bounding_box
-            }
+            })
         )
 
         self.db.add(tiger_image)

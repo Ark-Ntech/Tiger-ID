@@ -10,6 +10,11 @@ from pathlib import Path
 
 from backend.api.routes import router
 from backend.api.auth_routes import router as auth_router
+from backend.api.error_handlers import (
+    APIError,
+    api_error_handler,
+    generic_exception_handler,
+)
 from backend.api.investigation2_routes import router as investigation2_router
 from backend.api.mcp_tools_routes import router as mcp_tools_router
 from backend.api.sse_routes import router as sse_router
@@ -30,6 +35,7 @@ from backend.api.approval_routes import router as approval_router
 from backend.api.finetuning_routes import router as finetuning_router
 from backend.api.model_performance_routes import router as model_performance_router
 from backend.api.model_version_routes import router as model_version_router
+from backend.api.discovery_routes import router as discovery_router
 from backend.api.middleware import RateLimitMiddleware
 from backend.middleware.audit_middleware import AuditMiddleware
 from backend.middleware.csrf_middleware import CSRFMiddleware
@@ -50,16 +56,20 @@ async def lifespan(app: FastAPI):
     # Health checks
     try:
         # Check database connectivity
-        from backend.database import engine
+        from backend.database import engine, init_db
         from sqlalchemy import text
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         logger.info("Database connection successful")
-        
+
+        # Initialize database schema (creates missing tables including audit_logs)
+        init_db()
+        logger.info("Database schema initialized")
+
         # Check if database needs data loading
-        from backend.database.sqlite_connection import get_sqlite_session
+        from backend.database import get_db_session
         from backend.database.models import Facility, Tiger
-        with get_sqlite_session() as db:
+        with get_db_session() as db:
             facility_count = db.query(Facility).count()
             tiger_count = db.query(Tiger).count()
             
@@ -82,18 +92,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Database connection check failed: {e}")
         logger.warning("Continuing startup - database may not be ready yet")
-    
-    try:
-        # Check Redis connectivity
-        from backend.services.cache_service import get_cache_service
-        cache = get_cache_service()
-        if cache.is_available():
-            logger.info("Redis connection successful")
-        else:
-            logger.warning("Redis not available - using in-memory cache")
-    except Exception as e:
-        logger.warning(f"Redis connection check failed: {e}")
-        logger.warning("Continuing startup - Redis may not be ready yet")
     
     # Initialize models (non-blocking, runs in background)
     try:
@@ -140,13 +138,33 @@ async def lifespan(app: FastAPI):
     # Initialize Sentry if configured
     if settings.sentry.dsn:
         initialize_sentry()
-    
+
+    # Start discovery scheduler if enabled
+    discovery_scheduler = None
+    try:
+        if settings.discovery.enabled:
+            from backend.services.discovery_scheduler import get_discovery_scheduler
+            discovery_scheduler = get_discovery_scheduler()
+            if discovery_scheduler.start():
+                logger.info("Continuous tiger discovery scheduler started (FREE tools only)")
+            else:
+                logger.warning("Discovery scheduler failed to start")
+        else:
+            logger.info("Discovery scheduler disabled (set DISCOVERY_ENABLED=true to enable)")
+    except Exception as e:
+        logger.warning(f"Failed to start discovery scheduler: {e}")
+
     logger.info("API startup complete")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Tiger ID API...")
+
+    # Stop discovery scheduler
+    if discovery_scheduler:
+        discovery_scheduler.stop()
+        logger.info("Discovery scheduler stopped")
 
 
 def create_app() -> FastAPI:
@@ -159,7 +177,7 @@ def create_app() -> FastAPI:
         
         ## Features
         
-        * **Multi-Agent AI Orchestration**: OmniVinci orchestrator with specialized agents
+        * **Multi-Agent AI Orchestration**: Claude AI orchestrator with specialized agents
         * **Tiger Stripe Re-Identification**: Deep learning models for identifying individual tigers
         * **Investigation Workflows**: End-to-end investigation workflows with evidence compilation
         * **Multi-User Collaboration**: Role-based access control and collaborative workspaces
@@ -217,7 +235,11 @@ def create_app() -> FastAPI:
     
     # Audit logging middleware
     app.add_middleware(AuditMiddleware)
-    
+
+    # Register exception handlers for standardized error responses
+    app.add_exception_handler(APIError, api_error_handler)
+    app.add_exception_handler(Exception, generic_exception_handler)
+
     # Include routers
     app.include_router(auth_router)  # Auth routes (no prefix, uses /api/auth)
     app.include_router(tiger_router, prefix="/api/v1")  # Tiger identification routes
@@ -241,7 +263,8 @@ def create_app() -> FastAPI:
     app.include_router(finetuning_router)  # Fine-tuning routes
     app.include_router(model_performance_router)  # Model performance monitoring routes
     app.include_router(model_version_router)  # Model version management routes
-    
+    app.include_router(discovery_router)  # Continuous tiger discovery routes (FREE tools)
+
     # Modal routes for model status and management
     try:
         from backend.api.modal_routes import router as modal_router
@@ -302,16 +325,9 @@ def create_app() -> FastAPI:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             db_status = "healthy"
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Database health check failed: {e}")
             db_status = "unhealthy"
-        
-        try:
-            # Quick Redis check
-            from backend.services.cache_service import get_cache_service
-            cache = get_cache_service()
-            redis_status = "healthy" if cache.is_available() else "unavailable"
-        except Exception:
-            redis_status = "unavailable"
         
         # Check model availability
         model_status = "unknown"
@@ -331,26 +347,25 @@ def create_app() -> FastAPI:
         
         # Check GPU availability
         gpu_status = "unavailable"
+        gpu_name = None
         try:
             import torch
             if torch.cuda.is_available():
                 gpu_status = "available"
                 gpu_name = torch.cuda.get_device_name(0)
-            else:
-                gpu_status = "unavailable"
-                gpu_name = None
-        except Exception:
-            gpu_name = None
+        except ImportError:
+            logger.debug("PyTorch not installed, GPU check skipped")
+        except Exception as e:
+            logger.warning(f"GPU availability check failed: {e}")
         
         overall_status = "healthy" if db_status == "healthy" else "degraded"
         
         return JSONResponse({
             "status": overall_status,
             "database": db_status,
-            "redis": redis_status,
             "models": model_status,
             "gpu": gpu_status,
-            "gpu_name": gpu_name if 'gpu_name' in locals() else None,
+            "gpu_name": gpu_name,
             "timestamp": datetime.utcnow().isoformat()
         })
     
