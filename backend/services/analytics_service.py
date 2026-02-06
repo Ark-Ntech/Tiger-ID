@@ -298,16 +298,28 @@ class AnalyticsService:
         # Facility coordinates (for mapping)
         facility_locations = []
         for fac in facilities:
-            if fac.city and fac.state:
-                # Note: In production, you'd geocode addresses to get lat/lng
+            # Parse coordinates from JSON field
+            lat, lon = None, None
+            if fac.coordinates:
+                try:
+                    import json
+                    coords_data = json.loads(fac.coordinates) if isinstance(fac.coordinates, str) else fac.coordinates
+                    if coords_data:
+                        lat = coords_data.get("latitude")
+                        lon = coords_data.get("longitude")
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    pass
+
+            # Include all facilities that have coordinates or city/state
+            if lat is not None or (fac.city and fac.state):
                 facility_locations.append({
                     "facility_id": str(fac.facility_id),
                     "name": fac.exhibitor_name,
                     "city": fac.city,
                     "state": fac.state,
                     "tiger_count": fac.tiger_count or 0,
-                    "latitude": None,  # Would be populated by geocoding service
-                    "longitude": None
+                    "latitude": lat,
+                    "longitude": lon
                 })
         
         # Convert to list format for investigations_by_location if needed

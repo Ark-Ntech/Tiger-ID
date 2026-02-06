@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { AnimatedNumber } from '../AnimatedNumber'
 
@@ -5,27 +6,27 @@ import { AnimatedNumber } from '../AnimatedNumber'
 const mockMatchMedia = (matches: boolean) => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
-    value: jest.fn().mockImplementation((query) => ({
+    value: vi.fn().mockImplementation((query: string) => ({
       matches,
       media: query,
       onchange: null,
-      addListener: jest.fn(),
-      removeListener: jest.fn(),
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
-      dispatchEvent: jest.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
     })),
   })
 }
 
 describe('AnimatedNumber', () => {
   beforeEach(() => {
-    jest.useFakeTimers()
+    vi.useFakeTimers()
     mockMatchMedia(false) // Default: no reduced motion preference
   })
 
   afterEach(() => {
-    jest.useRealTimers()
+    vi.useRealTimers()
   })
 
   it('should render with data-testid', () => {
@@ -125,7 +126,7 @@ describe('AnimatedNumber', () => {
     render(<AnimatedNumber value={100} duration={500} animate={true} />)
 
     // Let animation complete
-    jest.advanceTimersByTime(600)
+    vi.advanceTimersByTime(600)
 
     await waitFor(() => {
       expect(screen.getByTestId('animated-number')).toHaveTextContent('100')
@@ -143,7 +144,7 @@ describe('AnimatedNumber', () => {
   })
 
   it('should call onComplete callback after animation', async () => {
-    const onComplete = jest.fn()
+    const onComplete = vi.fn()
     render(
       <AnimatedNumber value={100} duration={500} onComplete={onComplete} animate={true} />
     )
@@ -152,7 +153,7 @@ describe('AnimatedNumber', () => {
     expect(onComplete).not.toHaveBeenCalled()
 
     // Let animation complete
-    jest.advanceTimersByTime(600)
+    vi.advanceTimersByTime(600)
 
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalledTimes(1)

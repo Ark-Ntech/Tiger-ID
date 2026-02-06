@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
-from backend.database.models import Investigation, Evidence, Facility, Tiger, InvestigationStep
+from backend.database.models import Investigation, Evidence, Facility, Tiger, TigerImage, InvestigationStep
 from backend.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -25,60 +25,76 @@ class GlobalSearchService:
         user_id: Optional[UUID] = None
     ) -> Dict[str, Any]:
         """
-        Perform global search across all entities
-        
+        Perform global search across all entities.
+
+        Returns results in the format expected by the frontend GlobalSearchResponse:
+        {
+            "query": str,
+            "results": {
+                "investigations": [...],
+                "tigers": [...],
+                "facilities": [...],
+                "evidence": [...]
+            },
+            "counts": {
+                "investigations": int,
+                "tigers": int,
+                "facilities": int,
+                "evidence": int
+            },
+            "total_results": int
+        }
+
         Args:
             query: Search query string
             entity_types: Filter by entity types (investigations, evidence, facilities, tigers)
             limit: Maximum results per entity type
             user_id: Optional user ID to filter by permissions
-        
+
         Returns:
-            Search results grouped by entity type
+            Search results grouped by entity type under a "results" key
         """
-        results = {
-            "query": query,
-            "total_results": 0,
-            "investigations": [],
-            "evidence": [],
-            "facilities": [],
-            "tigers": [],
-            "steps": []
-        }
-        
+        inv_results = []
+        ev_results = []
+        fac_results = []
+        tiger_results = []
+
         search_terms = query.lower().split()
-        
+
         # Search investigations
         if not entity_types or "investigations" in entity_types:
             inv_results = self._search_investigations(search_terms, limit, user_id)
-            results["investigations"] = inv_results
-            results["total_results"] += len(inv_results)
-        
+
         # Search evidence
         if not entity_types or "evidence" in entity_types:
             ev_results = self._search_evidence(search_terms, limit, user_id)
-            results["evidence"] = ev_results
-            results["total_results"] += len(ev_results)
-        
+
         # Search facilities
         if not entity_types or "facilities" in entity_types:
             fac_results = self._search_facilities(search_terms, limit)
-            results["facilities"] = fac_results
-            results["total_results"] += len(fac_results)
-        
+
         # Search tigers
         if not entity_types or "tigers" in entity_types:
             tiger_results = self._search_tigers(search_terms, limit)
-            results["tigers"] = tiger_results
-            results["total_results"] += len(tiger_results)
-        
-        # Search investigation steps
-        if not entity_types or "steps" in entity_types:
-            step_results = self._search_steps(search_terms, limit, user_id)
-            results["steps"] = step_results
-            results["total_results"] += len(step_results)
-        
-        return results
+
+        total = len(inv_results) + len(ev_results) + len(fac_results) + len(tiger_results)
+
+        return {
+            "query": query,
+            "results": {
+                "investigations": inv_results,
+                "tigers": tiger_results,
+                "facilities": fac_results,
+                "evidence": ev_results,
+            },
+            "counts": {
+                "investigations": len(inv_results),
+                "tigers": len(tiger_results),
+                "facilities": len(fac_results),
+                "evidence": len(ev_results),
+            },
+            "total_results": total,
+        }
     
     def _search_investigations(
         self,
@@ -209,35 +225,41 @@ class GlobalSearchService:
         search_terms: List[str],
         limit: int
     ) -> List[Dict[str, Any]]:
-        """Search tigers"""
-        query = self.session.query(Tiger)
-        
+        """Search tigers by name, alias, notes, and status"""
+        from sqlalchemy.orm import joinedload
+
+        query = self.session.query(Tiger).options(joinedload(Tiger.images))
+
         # Build search conditions
         conditions = []
         for term in search_terms:
-            # Only search on string fields, not UUIDs (which can't use LIKE)
-            name_conditions = []
-            if hasattr(Tiger, 'name') and Tiger.name is not None:
-                name_conditions.append(Tiger.name.ilike(f"%{term}%"))
-            if hasattr(Tiger, 'alias') and Tiger.alias is not None:
-                name_conditions.append(Tiger.alias.ilike(f"%{term}%"))
-            
-            if name_conditions:
-                conditions.append(or_(*name_conditions))
-        
+            term_conditions = []
+            if Tiger.name is not None:
+                term_conditions.append(Tiger.name.ilike(f"%{term}%"))
+            if Tiger.alias is not None:
+                term_conditions.append(Tiger.alias.ilike(f"%{term}%"))
+            if Tiger.notes is not None:
+                term_conditions.append(Tiger.notes.ilike(f"%{term}%"))
+            if Tiger.status is not None:
+                term_conditions.append(Tiger.status.ilike(f"%{term}%"))
+
+            if term_conditions:
+                conditions.append(or_(*term_conditions))
+
         if conditions:
             query = query.filter(and_(*conditions))
-        
+
         tigers = query.limit(limit).all()
-        
+
         return [
             {
-                "id": str(t.tiger_id) if hasattr(t, 'tiger_id') else str(t.id),
+                "id": str(t.tiger_id),
                 "entity_type": "tiger",
-                "name": t.name if hasattr(t, 'name') else None,
-                "facility_id": str(t.facility_id) if hasattr(t, 'facility_id') and t.facility_id else None,
-                "status": t.status if hasattr(t, 'status') else None,
-                "images": [],  # Will be populated by relationship if needed
+                "name": t.name,
+                "alias": t.alias,
+                "facility_id": str(t.origin_facility_id) if t.origin_facility_id else None,
+                "status": t.status,
+                "images": [img.image_path for img in t.images] if t.images else [],
                 "match_score": 1.0
             }
             for t in tigers

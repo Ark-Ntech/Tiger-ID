@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { VerificationComparison } from '../VerificationComparison'
 import type { VerifiedCandidate } from '../../../types/investigation2'
@@ -65,6 +65,11 @@ describe('VerificationComparison', () => {
       combined_score: 0.95,
       num_matches: 42,
       normalized_match_score: 0.88,
+      match_score: 0.92,
+      verification_status: 'verified',
+      similarity: 0.92,
+      confidence: 0.95,
+      model: 'wildlife_tools',
     },
     {
       tiger_id: 't3',
@@ -72,6 +77,11 @@ describe('VerificationComparison', () => {
       combined_score: 0.82,
       num_matches: 35,
       normalized_match_score: 0.75,
+      match_score: 0.78,
+      verification_status: 'verified',
+      similarity: 0.78,
+      confidence: 0.82,
+      model: 'transreid',
     },
     {
       tiger_id: 't2',
@@ -79,6 +89,11 @@ describe('VerificationComparison', () => {
       combined_score: 0.72,
       num_matches: 28,
       normalized_match_score: 0.65,
+      match_score: 0.70,
+      verification_status: 'low_confidence',
+      similarity: 0.70,
+      confidence: 0.72,
+      model: 'cvwc2019',
     },
   ]
 
@@ -161,6 +176,11 @@ describe('VerificationComparison', () => {
           combined_score: 0.95,
           num_matches: 42,
           normalized_match_score: 0.88,
+          match_score: 0.92,
+          verification_status: 'verified',
+          similarity: 0.92,
+          confidence: 0.95,
+          model: 'cvwc2019',
         },
         ...mockVerifiedCandidates.slice(1),
       ]

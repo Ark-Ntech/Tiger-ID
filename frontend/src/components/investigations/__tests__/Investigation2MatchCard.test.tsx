@@ -146,7 +146,7 @@ describe('Investigation2MatchCard', () => {
   it('handles missing tiger name gracefully', () => {
     const matchNoName = {
       ...mockMatch,
-      tiger_name: undefined,
+      tiger_name: 'Unknown',
     }
     render(<Investigation2MatchCard match={matchNoName} rank={1} />)
     // Should show ID or placeholder

@@ -5,7 +5,6 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { Investigation2Provider, useInvestigation2 } from '../Investigation2Context'
 import { api } from '../../app/api'
-import type { Investigation2Response } from '../../types/investigation2'
 
 const createMockStore = () => {
   return configureStore({

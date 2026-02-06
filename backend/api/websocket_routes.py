@@ -225,7 +225,7 @@ async def websocket_endpoint(
         from backend.database import get_db_session
         
         # Get user from token
-        db = next(get_db_session())
+        db = get_db_session()
         try:
             user = await get_current_user_ws(token, db)
             if not user:
@@ -315,7 +315,7 @@ async def websocket_endpoint(
 
                             async with inv_lock:
                                 # Process message with Hermes chat orchestrator
-                                db = next(get_db_session())
+                                db = get_db_session()
                                 try:
                                     investigation_service = InvestigationService(db)
 

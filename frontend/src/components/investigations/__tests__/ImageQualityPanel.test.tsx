@@ -191,6 +191,9 @@ describe('ImageQualityPanel', () => {
     it('should handle missing metric scores', () => {
       const incompleteQuality: ImageQuality = {
         overall_score: 0.7,
+        resolution_score: 0.7,
+        blur_score: 0.7,
+        stripe_visibility: 0.7,
         issues: [],
         recommendations: [],
       }

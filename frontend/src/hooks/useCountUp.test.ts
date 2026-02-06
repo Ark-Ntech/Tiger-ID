@@ -1,31 +1,32 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useCountUp } from './useCountUp'
 
 // Mock matchMedia for reduced motion testing
 const mockMatchMedia = (matches: boolean) => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
-    value: jest.fn().mockImplementation((query) => ({
+    value: vi.fn().mockImplementation((query: string) => ({
       matches,
       media: query,
       onchange: null,
-      addListener: jest.fn(),
-      removeListener: jest.fn(),
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
-      dispatchEvent: jest.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
     })),
   })
 }
 
 describe('useCountUp', () => {
   beforeEach(() => {
-    jest.useFakeTimers()
+    vi.useFakeTimers()
     mockMatchMedia(false) // Default: no reduced motion preference
   })
 
   afterEach(() => {
-    jest.useRealTimers()
+    vi.useRealTimers()
   })
 
   it('should start at the start value', () => {
@@ -54,7 +55,7 @@ describe('useCountUp', () => {
 
     // Advance timers to complete animation
     await act(async () => {
-      jest.advanceTimersByTime(1100)
+      vi.advanceTimersByTime(1100)
     })
 
     await waitFor(() => {
@@ -64,7 +65,7 @@ describe('useCountUp', () => {
   })
 
   it('should call onComplete when animation finishes', async () => {
-    const onComplete = jest.fn()
+    const onComplete = vi.fn()
     renderHook(() =>
       useCountUp({
         start: 0,
@@ -76,7 +77,7 @@ describe('useCountUp', () => {
     )
 
     await act(async () => {
-      jest.advanceTimersByTime(600)
+      vi.advanceTimersByTime(600)
     })
 
     await waitFor(() => {
@@ -103,7 +104,7 @@ describe('useCountUp', () => {
 
     // Let animation complete
     await act(async () => {
-      jest.advanceTimersByTime(600)
+      vi.advanceTimersByTime(600)
     })
 
     await waitFor(() => {
@@ -126,7 +127,7 @@ describe('useCountUp', () => {
 
     // Let first animation complete
     await act(async () => {
-      jest.advanceTimersByTime(600)
+      vi.advanceTimersByTime(600)
     })
 
     await waitFor(() => {
@@ -140,7 +141,7 @@ describe('useCountUp', () => {
     expect(result.current.isAnimating).toBe(true)
 
     await act(async () => {
-      jest.advanceTimersByTime(600)
+      vi.advanceTimersByTime(600)
     })
 
     await waitFor(() => {
@@ -163,7 +164,7 @@ describe('useCountUp', () => {
     )
 
     await act(async () => {
-      jest.advanceTimersByTime(600)
+      vi.advanceTimersByTime(600)
     })
 
     await waitFor(() => {
@@ -179,7 +180,7 @@ describe('useCountUp', () => {
     expect(result.current.isAnimating).toBe(true)
 
     await act(async () => {
-      jest.advanceTimersByTime(600)
+      vi.advanceTimersByTime(600)
     })
 
     await waitFor(() => {

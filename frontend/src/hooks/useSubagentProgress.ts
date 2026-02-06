@@ -185,10 +185,10 @@ export const useSubagentProgress = (
         const now = new Date().toISOString()
 
         const updated: ModelProgress = {
+          ...(existing || {}),
           model,
           progress,
           status,
-          ...(existing || {}),
           ...(status === 'running' && !existing?.startedAt ? { startedAt: now } : {}),
           ...(status === 'completed' ? { completedAt: now } : {}),
           ...extras,

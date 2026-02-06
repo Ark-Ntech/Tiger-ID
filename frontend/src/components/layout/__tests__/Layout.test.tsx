@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
-import React from 'react'
 import Layout from '../Layout'
 
 // Mock cn utility

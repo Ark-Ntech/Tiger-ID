@@ -59,13 +59,18 @@ export const baseApi = createApi({
 
     // Handle 401 errors - redirect to login
     if (result.error && 'status' in result.error && result.error.status === 401) {
-      // Clear token
-      localStorage.removeItem('token')
-      // Dispatch logout action
-      api.dispatch({ type: 'auth/logout' })
-      // Redirect to login
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login'
+      // Don't redirect if already on login page (prevents wiping login error message)
+      const isLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login'
+
+      if (!isLoginPage) {
+        // Clear token
+        localStorage.removeItem('token')
+        // Dispatch logout action
+        api.dispatch({ type: 'auth/logout' })
+        // Redirect to login
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login'
+        }
       }
     }
 

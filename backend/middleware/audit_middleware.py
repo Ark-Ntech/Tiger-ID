@@ -18,6 +18,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request and log audit information"""
+        # Skip WebSocket upgrade requests -- BaseHTTPMiddleware cannot handle
+        # the WebSocket protocol upgrade and will break the connection.
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            return await call_next(request)
+
         # Skip logging for certain paths
         skip_paths = ["/health", "/docs", "/openapi.json", "/redoc"]
         if any(request.url.path.startswith(path) for path in skip_paths):

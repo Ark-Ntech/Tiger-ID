@@ -1,5 +1,6 @@
 """Main API routes and endpoint handlers"""
 
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pathlib import Path
 from sqlalchemy.orm import Session
@@ -11,9 +12,30 @@ from backend.auth.auth import get_current_user
 from backend.utils.pagination import PaginatedResponse, paginate_query
 from backend.utils.response_models import SuccessResponse
 from backend.services.investigation_service import InvestigationService
+from backend.utils.logging import get_logger
 from pydantic import BaseModel, validator, field_validator
 
+logger = get_logger(__name__)
+
 router = APIRouter(tags=["api"])  # Prefix added when including in app.py
+
+
+def _parse_facility_coordinates(facility) -> tuple:
+    """Parse latitude/longitude from facility.coordinates JSON text field.
+
+    Returns:
+        (latitude, longitude) tuple, with None values if not available.
+    """
+    lat, lon = None, None
+    if facility.coordinates:
+        try:
+            coords_data = json.loads(facility.coordinates) if isinstance(facility.coordinates, str) else facility.coordinates
+            if coords_data:
+                lat = coords_data.get("latitude")
+                lon = coords_data.get("longitude")
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+    return lat, lon
 
 
 # Response models
@@ -39,9 +61,11 @@ class FacilityResponse(BaseModel):
     city: str
     state: str
     country: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     status: str
     verified: bool
-    
+
     class Config:
         from_attributes = True
 
@@ -252,6 +276,18 @@ async def get_facilities(
     # Convert to response format
     facility_data = []
     for facility in facilities:
+        # Parse reference_metadata from JSON string to dict if needed
+        # (reference_metadata is a plain Text column, not JSONEncodedValue)
+        ref_meta = facility.reference_metadata or {}
+        if isinstance(ref_meta, str):
+            try:
+                ref_meta = json.loads(ref_meta)
+            except (json.JSONDecodeError, TypeError):
+                ref_meta = {}
+
+        # Parse lat/lng from coordinates JSON field
+        lat, lon = _parse_facility_coordinates(facility)
+
         facility_data.append({
             "id": str(facility.facility_id),
             "name": facility.exhibitor_name,
@@ -263,6 +299,8 @@ async def get_facilities(
             "city": facility.city or "",
             "state": facility.state or "",
             "country": "USA",  # Add if available
+            "latitude": lat,
+            "longitude": lon,
             "status": "active",  # Add if available
             "verified": True,  # Add if available
             "tiger_count": facility.tiger_count or 0,
@@ -274,7 +312,7 @@ async def get_facilities(
             "social_media_links": facility.social_media_links or {},
             "is_reference_facility": facility.is_reference_facility or False,
             "data_source": facility.data_source,
-            "reference_metadata": facility.reference_metadata or {},
+            "reference_metadata": ref_meta,
             "created_at": facility.created_at.isoformat() if facility.created_at else None,
             "updated_at": facility.updated_at.isoformat() if facility.updated_at else None,
         })
@@ -299,11 +337,24 @@ async def get_facility(
     current_user: User = Depends(get_current_user)
 ):
     """Get facility by ID"""
-    facility = db.query(Facility).filter(Facility.facility_id == facility_id).first()
-    
+    # Convert UUID to string for SQLite String(36) column comparison
+    facility = db.query(Facility).filter(Facility.facility_id == str(facility_id)).first()
+
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
-    
+
+    # Parse reference_metadata from JSON string to dict if needed
+    # (reference_metadata is a plain Text column, not JSONEncodedValue)
+    reference_metadata = facility.reference_metadata or {}
+    if isinstance(reference_metadata, str):
+        try:
+            reference_metadata = json.loads(reference_metadata)
+        except (json.JSONDecodeError, TypeError):
+            reference_metadata = {}
+
+    # Parse lat/lng from coordinates JSON field
+    lat, lon = _parse_facility_coordinates(facility)
+
     return {
         "success": True,
         "data": {
@@ -315,6 +366,9 @@ async def get_facility(
             "address": facility.address,
             "city": facility.city,
             "state": facility.state,
+            "country": "USA",
+            "latitude": lat,
+            "longitude": lon,
             "tiger_count": facility.tiger_count or 0,
             "tiger_capacity": facility.tiger_capacity,
             "accreditation_status": facility.accreditation_status,
@@ -324,7 +378,7 @@ async def get_facility(
             "social_media_links": facility.social_media_links or {},
             "is_reference_facility": facility.is_reference_facility or False,
             "data_source": facility.data_source,
-            "reference_metadata": facility.reference_metadata or {},
+            "reference_metadata": reference_metadata,
             "created_at": facility.created_at.isoformat() if facility.created_at else None,
             "updated_at": facility.updated_at.isoformat() if facility.updated_at else None,
         }
@@ -405,10 +459,10 @@ async def get_dashboard_stats(
     
     total_investigations = db.query(Investigation).count()
     active_investigations = db.query(Investigation).filter(
-        Investigation.status == InvestigationStatus.active
+        Investigation.status == InvestigationStatus.active.value
     ).count()
     completed_investigations = db.query(Investigation).filter(
-        Investigation.status == InvestigationStatus.completed
+        Investigation.status == InvestigationStatus.completed.value
     ).count()
     total_tigers = db.query(Tiger).count()
     total_facilities = db.query(Facility).count()

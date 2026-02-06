@@ -357,7 +357,7 @@ const Dashboard = () => {
         value: verAnalytics?.pending || 0,
         icon: <ClockIcon className="w-5 h-5" />,
         color: (verAnalytics?.pending || 0) > 10 ? ('warning' as const) : ('default' as const),
-        href: '/verifications',
+        href: '/verification',
       },
     ]
   }, [stats, tigAnalytics, facAnalytics, verAnalytics])
@@ -602,7 +602,7 @@ const Dashboard = () => {
                   whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm transition-colors
                   ${
                     activeTab === index
-                      ? 'border-primary-600 text-primary-600'
+                      ? 'border-tiger-orange text-tiger-orange'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }
                 `}
@@ -758,7 +758,7 @@ const InvestigationAnalyticsTab = ({
                 data-testid={`investigation-item-${investigation.id}`}
               >
                 <div className="flex items-center space-x-3 flex-1">
-                  <FolderOpenIcon className="h-5 w-5 text-primary-600" />
+                  <FolderOpenIcon className="h-5 w-5 text-tiger-orange" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-gray-900">{investigation.title}</p>
                     <p className="text-xs text-gray-500 mt-1">
@@ -1064,7 +1064,7 @@ const TigerAnalyticsTab = ({
           onClick={() => navigate && navigate('/tigers')}
         >
           <p className="text-sm text-gray-600">View All Tigers</p>
-          <p className="text-lg font-semibold text-primary-600 mt-2">Browse Tigers</p>
+          <p className="text-lg font-semibold text-tiger-orange mt-2">Browse Tigers</p>
         </Card>
       </div>
     </div>
@@ -1110,7 +1110,7 @@ const FacilityAnalyticsTab = ({
         <Card>
           <div className="text-center">
             <p className="text-sm font-medium text-gray-600">Total Facilities</p>
-            <p className="text-4xl font-bold text-primary-600 mt-2">{analytics?.total_facilities || 0}</p>
+            <p className="text-4xl font-bold text-tiger-orange mt-2">{analytics?.total_facilities || 0}</p>
           </div>
         </Card>
         <Card>
@@ -1133,7 +1133,7 @@ const FacilityAnalyticsTab = ({
         >
           <div className="text-center">
             <p className="text-sm font-medium text-gray-600">View All Facilities</p>
-            <p className="text-lg font-semibold text-primary-600 mt-2">Browse</p>
+            <p className="text-lg font-semibold text-tiger-orange mt-2">Browse</p>
           </div>
         </Card>
       </div>

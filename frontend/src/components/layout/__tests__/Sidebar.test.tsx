@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
-import React from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import Sidebar from '../Sidebar'
 
 // Mock cn utility

@@ -198,8 +198,8 @@ const MobileNav = ({ isOpen, onClose, navigation, user }: MobileNavProps) => {
               {/* Version Footer */}
               <div className="p-4 border-t border-tactical-800">
                 <div className="text-xs text-tactical-400 text-center">
-                  <p data-testid="mobile-nav-version">Version 1.0.0</p>
-                  <p className="mt-1">© 2024 Tiger ID</p>
+                  <p data-testid="mobile-nav-version">Version 2.0.0</p>
+                  <p className="mt-1">© 2026 Tiger ID</p>
                 </div>
               </div>
             </Dialog.Panel>

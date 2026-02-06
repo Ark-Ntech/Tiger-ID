@@ -52,6 +52,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request with CSRF protection"""
+        # Skip WebSocket upgrade requests -- BaseHTTPMiddleware cannot handle
+        # the WebSocket protocol upgrade and will break the connection.
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            return await call_next(request)
+
         # Skip CSRF for safe methods and certain paths
         safe_methods = ["GET", "HEAD", "OPTIONS"]
         skip_paths = ["/health", "/docs", "/openapi.json", "/redoc", "/api/auth"]
