@@ -192,7 +192,7 @@ const Home = () => {
               illicitly by analyzing user-provided data and external information using multi-agent AI.
             </p>
             <div className="mt-4">
-              <Button variant="primary" size="sm">
+              <Button variant="primary" size="sm" onClick={() => navigate('/documentation')}>
                 View Documentation
               </Button>
             </div>

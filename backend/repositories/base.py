@@ -78,7 +78,9 @@ class BaseRepository(Generic[T]):
             Entity if found, None otherwise
         """
         pk_column = self._get_primary_key_column()
-        return self.db.query(self.model_class).filter(pk_column == id).first()
+        # Convert UUID to string for SQLite String(36) column comparison
+        id_value = str(id) if isinstance(id, UUID) else id
+        return self.db.query(self.model_class).filter(pk_column == id_value).first()
 
     def get_all(self, limit: int = 100, offset: int = 0) -> List[T]:
         """Get all entities with optional limit and offset.
@@ -216,8 +218,10 @@ class BaseRepository(Generic[T]):
             True if exists, False otherwise
         """
         pk_column = self._get_primary_key_column()
+        # Convert UUID to string for SQLite String(36) column comparison
+        id_value = str(id) if isinstance(id, UUID) else id
         return self.db.query(
-            self.db.query(self.model_class).filter(pk_column == id).exists()
+            self.db.query(self.model_class).filter(pk_column == id_value).exists()
         ).scalar()
 
     def count(self, filters: Optional[List[FilterCriteria]] = None) -> int:

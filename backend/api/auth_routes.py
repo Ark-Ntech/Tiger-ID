@@ -140,30 +140,25 @@ async def login_endpoint(
         access_token=access_token,
         token_type="bearer",
         user={
-            "user_id": str(user.user_id),
+            "id": str(user.user_id),
             "username": user.username,
             "email": user.email,
-            "role": user.role.value if hasattr(user.role, 'value') else str(user.role),
-            "permissions": user.permissions or {}
+            "role": role_value,
+            "full_name": getattr(user, 'full_name', None),
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if hasattr(user, 'updated_at') and user.updated_at else None,
         },
         expires_in=int(expires_delta.total_seconds())
     )
 
 
-@router.post("/register", response_model=RegisterResponse)
+@router.post("/register", response_model=LoginResponse)
 async def register_endpoint(
     register_data: RegisterRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Register a new user
-    
-    Args:
-        register_data: Registration information
-        db: Database session
-    
-    Returns:
-        Created user information
+    Register a new user and return JWT token for auto-login
     """
     # Check if username already exists
     existing_user = db.query(User).filter(User.username == register_data.username).first()
@@ -172,7 +167,7 @@ async def register_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered"
         )
-    
+
     # Check if email already exists
     existing_email = db.query(User).filter(User.email == register_data.email).first()
     if existing_email:
@@ -202,12 +197,26 @@ async def register_endpoint(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
-    return RegisterResponse(
-        user_id=str(new_user.user_id),
-        username=new_user.username,
-        email=new_user.email,
-        message="User registered successfully"
+
+    # Generate JWT token for auto-login
+    role_value = new_user.role.value if hasattr(new_user.role, 'value') else str(new_user.role)
+    token_data = {"sub": new_user.username, "role": role_value}
+    expires_delta = timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    access_token = create_access_token(token_data, expires_delta=expires_delta)
+
+    return LoginResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user={
+            "id": str(new_user.user_id),
+            "username": new_user.username,
+            "email": new_user.email,
+            "role": role_value,
+            "full_name": register_data.full_name,
+            "created_at": new_user.created_at.isoformat() if new_user.created_at else None,
+            "updated_at": None,
+        },
+        expires_in=int(expires_delta.total_seconds())
     )
 
 
@@ -224,15 +233,73 @@ async def get_current_user_info(
     Returns:
         User information
     """
+    role_value = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
     return {
-        "user_id": str(current_user.user_id),
-        "username": current_user.username,
-        "email": current_user.email,
-        "role": current_user.role,
-        "permissions": current_user.permissions or {},
-        "is_active": current_user.is_active,
-        "created_at": current_user.created_at.isoformat() if current_user.created_at else None
+        "data": {
+            "id": str(current_user.user_id),
+            "username": current_user.username,
+            "email": current_user.email,
+            "role": role_value,
+            "full_name": getattr(current_user, 'full_name', None),
+            "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
+            "updated_at": current_user.updated_at.isoformat() if hasattr(current_user, 'updated_at') and current_user.updated_at else None,
+        },
+        "success": True
     }
+
+
+@router.post("/refresh")
+async def refresh_token_endpoint(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """
+    Refresh an authentication token.
+    Validates the current token, blacklists it, and issues a new one.
+    """
+    token = credentials.credentials
+    try:
+        payload = decode_token(token)
+        username = payload.get("sub")
+        role = payload.get("role")
+        jti = payload.get("jti")
+
+        if not username:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+
+        # Verify user still exists and is active
+        user = db.query(User).filter(User.username == username).first()
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found or inactive"
+            )
+
+        # Blacklist the old token
+        if jti:
+            blacklist_token(jti)
+
+        # Issue new token
+        role_value = user.role.value if hasattr(user.role, 'value') else str(user.role)
+        token_data = {"sub": user.username, "role": role_value}
+        expires_delta = timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+        new_token = create_access_token(token_data, expires_delta=expires_delta)
+
+        return {
+            "access_token": new_token,
+            "token_type": "bearer",
+            "expires_in": int(expires_delta.total_seconds())
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not refresh token"
+        )
 
 
 @router.post("/logout")

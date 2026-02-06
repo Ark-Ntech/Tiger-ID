@@ -26,7 +26,7 @@ class TigerImageRepository(BaseRepository[TigerImage]):
         """
         return (
             self.db.query(TigerImage)
-            .filter(TigerImage.tiger_id == tiger_id)
+            .filter(TigerImage.tiger_id == str(tiger_id))
             .all()
         )
 
@@ -43,7 +43,7 @@ class TigerImageRepository(BaseRepository[TigerImage]):
             self.db.query(TigerImage)
             .filter(
                 and_(
-                    TigerImage.tiger_id == tiger_id,
+                    TigerImage.tiger_id == str(tiger_id),
                     TigerImage.verified == True
                 )
             )
@@ -73,7 +73,7 @@ class TigerImageRepository(BaseRepository[TigerImage]):
         """
         return (
             self.db.query(TigerImage)
-            .filter(TigerImage.discovered_by_investigation_id == investigation_id)
+            .filter(TigerImage.discovered_by_investigation_id == str(investigation_id))
             .all()
         )
 
@@ -96,7 +96,7 @@ class TigerRepository(BaseRepository[Tiger]):
         """
         return (
             self.db.query(Tiger)
-            .filter(Tiger.tiger_id == tiger_id)
+            .filter(Tiger.tiger_id == str(tiger_id))
             .first()
         )
 
@@ -141,7 +141,7 @@ class TigerRepository(BaseRepository[Tiger]):
         """
         return (
             self.db.query(Tiger)
-            .filter(Tiger.origin_facility_id == facility_id)
+            .filter(Tiger.origin_facility_id == str(facility_id))
             .all()
         )
 
@@ -246,7 +246,7 @@ class TigerRepository(BaseRepository[Tiger]):
             .filter(
                 and_(
                     Tiger.origin_facility_id == tiger.origin_facility_id,
-                    Tiger.tiger_id != tiger_id
+                    Tiger.tiger_id != str(tiger_id)
                 )
             )
             .limit(limit)

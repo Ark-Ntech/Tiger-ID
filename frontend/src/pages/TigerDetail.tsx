@@ -30,9 +30,9 @@ const TigerDetail = () => {
         tiger_name: tiger?.name 
       }).unwrap()
       
-      if (result.data?.investigation_id) {
+      if ((result.data as { investigation_id?: string })?.investigation_id) {
         // Navigate to investigation workspace
-        navigate(`/investigations/${result.data.investigation_id}`)
+        navigate(`/investigations/${(result.data as { investigation_id?: string }).investigation_id}`)
       } else {
         // Fallback: navigate to launch page
         navigate(`/investigations/launch?tiger_id=${id}`)
@@ -85,10 +85,10 @@ const TigerDetail = () => {
             Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-tactical-50">
               {tiger.name || `Tiger #${tiger.tiger_id?.substring(0, 8)}`}
             </h1>
-            <p className="text-gray-600 mt-1">
+            <p className="text-gray-500 dark:text-tactical-400 mt-1">
               ID: {tiger.tiger_id?.substring(0, 8)}...
             </p>
           </div>
@@ -111,7 +111,7 @@ const TigerDetail = () => {
           {/* Images */}
           <Card>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Images</h2>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-tactical-100">Images</h2>
               <Button
                 variant="secondary"
                 size="sm"
@@ -125,7 +125,7 @@ const TigerDetail = () => {
                 {tiger.images.map((image: any, index: number) => (
                   <div
                     key={image.id || index}
-                    className="aspect-video bg-gray-200 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity relative group"
+                    className="aspect-video bg-gray-100 dark:bg-tactical-800 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity relative group"
                     onClick={() => setSelectedImageIndex(index)}
                   >
                     <img
@@ -144,13 +144,13 @@ const TigerDetail = () => {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+              <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-tactical-500">
                 <PhotoIcon className="h-16 w-16 mb-4" />
                 <p>No images available</p>
               </div>
             )}
             {tiger.image_count !== undefined && (
-              <p className="text-sm text-gray-600 mt-4">
+              <p className="text-sm text-gray-500 dark:text-tactical-400 mt-4">
                 Total images: {tiger.image_count}
               </p>
             )}
@@ -207,8 +207,8 @@ const TigerDetail = () => {
           {/* Notes */}
           {tiger.notes && (
             <Card>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Notes</h2>
-              <p className="text-gray-700 whitespace-pre-wrap">{tiger.notes}</p>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-tactical-100 mb-4">Notes</h2>
+              <p className="text-gray-600 dark:text-tactical-300 whitespace-pre-wrap">{tiger.notes}</p>
             </Card>
           )}
         </div>
@@ -217,10 +217,10 @@ const TigerDetail = () => {
         <div className="space-y-6">
           {/* Status Card */}
           <Card>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Status</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-tactical-100 mb-4">Status</h2>
             <div className="space-y-3">
               <div>
-                <label className="text-sm font-medium text-gray-600">Status</label>
+                <label className="text-sm font-medium text-gray-500 dark:text-tactical-400">Status</label>
                 <div className="mt-1">
                   <Badge variant={tiger.status === 'active' ? 'success' : 'warning'}>
                     {tiger.status || 'Unknown'}
@@ -229,20 +229,20 @@ const TigerDetail = () => {
               </div>
               {tiger.alias && (
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Alias</label>
-                  <p className="mt-1 text-gray-900">{tiger.alias}</p>
+                  <label className="text-sm font-medium text-gray-500 dark:text-tactical-400">Alias</label>
+                  <p className="mt-1 text-gray-900 dark:text-tactical-100">{tiger.alias}</p>
                 </div>
               )}
               {tiger.last_seen_location && (
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Last Seen Location</label>
-                  <p className="mt-1 text-gray-900">{tiger.last_seen_location}</p>
+                  <label className="text-sm font-medium text-gray-500 dark:text-tactical-400">Last Seen Location</label>
+                  <p className="mt-1 text-gray-900 dark:text-tactical-100">{tiger.last_seen_location}</p>
                 </div>
               )}
               {tiger.last_seen_date && (
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Last Seen Date</label>
-                  <p className="mt-1 text-gray-900">
+                  <label className="text-sm font-medium text-gray-500 dark:text-tactical-400">Last Seen Date</label>
+                  <p className="mt-1 text-gray-900 dark:text-tactical-100">
                     {new Date(tiger.last_seen_date).toLocaleDateString()}
                   </p>
                 </div>
@@ -253,17 +253,17 @@ const TigerDetail = () => {
           {/* Related Tigers */}
           {tiger.related_tigers && tiger.related_tigers.length > 0 && (
             <Card>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Related Tigers</h2>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-tactical-100 mb-4">Related Tigers</h2>
               <div className="space-y-2">
                 {tiger.related_tigers.map((relatedTiger: any) => (
                   <div
                     key={relatedTiger.id}
-                    className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                    className="p-3 bg-gray-50 dark:bg-tactical-800 rounded-lg hover:bg-gray-100 dark:hover:bg-tactical-700 cursor-pointer transition-colors"
                     onClick={() => navigate(`/tigers/${relatedTiger.id}`)}
                   >
-                    <p className="font-medium text-gray-900">{relatedTiger.name || `Tiger #${relatedTiger.id.substring(0, 8)}`}</p>
+                    <p className="font-medium text-gray-900 dark:text-tactical-100">{relatedTiger.name || `Tiger #${relatedTiger.id.substring(0, 8)}`}</p>
                     {relatedTiger.alias && (
-                      <p className="text-sm text-gray-600">Alias: {relatedTiger.alias}</p>
+                      <p className="text-sm text-gray-500 dark:text-tactical-400">Alias: {relatedTiger.alias}</p>
                     )}
                     <Badge variant={relatedTiger.status === 'active' ? 'success' : 'warning'} className="mt-2">
                       {relatedTiger.status}
@@ -276,7 +276,7 @@ const TigerDetail = () => {
 
           {/* Quick Actions */}
           <Card>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-tactical-100 mb-4">Quick Actions</h2>
             <div className="space-y-2">
               <Button
                 variant="primary"
@@ -299,18 +299,18 @@ const TigerDetail = () => {
 
           {/* Metadata */}
           <Card>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Metadata</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-tactical-100 mb-4">Metadata</h2>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Tiger ID:</span>
-                <span className="text-gray-900 font-mono text-xs">
+                <span className="text-gray-500 dark:text-tactical-400">Tiger ID:</span>
+                <span className="text-gray-900 dark:text-tactical-100 font-mono text-xs">
                   {tiger.tiger_id?.substring(0, 8)}...
                 </span>
               </div>
               {tiger.image_count !== undefined && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Image Count:</span>
-                  <span className="text-gray-900">{tiger.image_count}</span>
+                  <span className="text-gray-500 dark:text-tactical-400">Image Count:</span>
+                  <span className="text-gray-900 dark:text-tactical-100">{tiger.image_count}</span>
                 </div>
               )}
             </div>

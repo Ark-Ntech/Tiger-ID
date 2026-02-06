@@ -315,6 +315,18 @@ async def get_crawl_queue(
         Facility.tiger_count.desc()
     ).limit(limit).all()
 
+    def _parse_coords(facility):
+        """Extract lat/lng from facility coordinates JSON."""
+        if facility.coordinates:
+            try:
+                import json
+                coords = json.loads(facility.coordinates) if isinstance(facility.coordinates, str) else facility.coordinates
+                if coords:
+                    return coords.get("latitude"), coords.get("longitude")
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+        return None, None
+
     return {
         "count": len(facilities),
         "days_since_crawl": days_old,
@@ -327,6 +339,8 @@ async def get_crawl_queue(
                 "tiger_count": f.tiger_count,
                 "website": f.website,
                 "has_social_media": bool(f.social_media_links),
+                "latitude": _parse_coords(f)[0],
+                "longitude": _parse_coords(f)[1],
                 "last_crawled_at": f.last_crawled_at.isoformat() if f.last_crawled_at else None
             }
             for f in facilities

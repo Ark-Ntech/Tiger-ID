@@ -749,21 +749,34 @@ class TigerService:
     
     async def get_tiger(self, tiger_id: UUID) -> Optional[Dict[str, Any]]:
         """Get tiger details with images"""
-        tiger = self.db.query(Tiger).filter(Tiger.tiger_id == tiger_id).first()
-        
+        # Convert UUID to string for SQLite String(36) column comparison
+        tiger_id_str = str(tiger_id)
+        tiger = self.db.query(Tiger).filter(Tiger.tiger_id == tiger_id_str).first()
+
         if not tiger:
             return None
-        
+
         images = self.db.query(TigerImage).filter(
-            TigerImage.tiger_id == tiger_id
+            TigerImage.tiger_id == tiger_id_str
         ).all()
         
         # Format images for response
         image_list = []
         for img in images:
+            # Build a static URL that doesn't require auth (for <img> tags)
+            image_url = img.image_path
+            if not img.image_path.startswith('http'):
+                # Convert Windows backslashes to forward slashes
+                posix_path = img.image_path.replace('\\', '/')
+                # Strip "data/models/atrw/images/" prefix for the static mount
+                atrw_prefix = "data/models/atrw/images/"
+                if posix_path.startswith(atrw_prefix):
+                    image_url = f"/static/images/atrw/{posix_path[len(atrw_prefix):]}"
+                else:
+                    image_url = f"/static/images/{posix_path}"
             image_list.append({
                 "id": str(img.image_id),
-                "url": img.image_path if img.image_path.startswith('http') else f"/api/v1/tigers/{tiger_id}/images/{img.image_id}",
+                "url": image_url,
                 "path": img.image_path,
                 "uploaded_by": str(img.uploaded_by) if img.uploaded_by else None,
                 "meta_data": img.meta_data or {}
@@ -774,7 +787,7 @@ class TigerService:
         if tiger.origin_facility_id:
             facility_tigers = self.db.query(Tiger).filter(
                 Tiger.origin_facility_id == tiger.origin_facility_id,
-                Tiger.tiger_id != tiger_id
+                Tiger.tiger_id != tiger_id_str
             ).limit(5).all()
             
             for related_tiger in facility_tigers:

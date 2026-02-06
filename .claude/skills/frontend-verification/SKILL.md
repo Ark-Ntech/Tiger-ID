@@ -11,6 +11,31 @@ This skill provides a complete verification workflow for React components using 
 
 ---
 
+## CRITICAL: Browser Tab Management
+
+**IMPORTANT**: When multiple agents run Playwright verification in parallel, they MUST use separate browser tabs to avoid conflicts.
+
+### Before Starting Verification:
+1. Check existing tabs: `mcp__playwright__browser_tabs` with action: "list"
+2. Create a NEW tab: `mcp__playwright__browser_tabs` with action: "new"
+3. Note the tab index returned
+4. Use that tab for all your operations
+
+### After Verification:
+1. Close your tab: `mcp__playwright__browser_tabs` with action: "close", index: [your tab index]
+
+### Example Workflow:
+```
+1. browser_tabs action: "list"          # See existing tabs
+2. browser_tabs action: "new"           # Create new tab, returns index
+3. browser_tabs action: "select" index: N  # Select your new tab
+4. browser_navigate url: "..."          # Navigate in YOUR tab
+5. browser_snapshot                      # Verify in YOUR tab
+6. browser_tabs action: "close" index: N # Clean up YOUR tab
+```
+
+---
+
 ## When to Use
 
 - After creating a new React component
@@ -31,6 +56,8 @@ cd frontend && npm run dev
 ```
 
 Wait for the server to be ready (usually shows "Local: http://localhost:5173").
+
+**NOTE**: Only ONE agent should start the dev server. Others should check if it's already running first.
 
 ### Step 2: Navigate to the Page
 

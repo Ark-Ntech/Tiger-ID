@@ -6,6 +6,9 @@ import {
   ChartBarIcon,
   CheckBadgeIcon,
   SignalIcon,
+  AdjustmentsHorizontalIcon,
+  CpuChipIcon,
+  CircleStackIcon,
 } from '@heroicons/react/24/outline'
 import { cn } from '../../utils/cn'
 
@@ -26,6 +29,12 @@ const navigation = [
   { name: 'Facilities', to: '/facilities', icon: BuildingOfficeIcon },
   { name: 'Verification', to: '/verification', icon: CheckBadgeIcon },
   { name: 'Discovery', to: '/discovery', icon: SignalIcon },
+]
+
+const mlNavigation = [
+  { name: 'Model Weights', to: '/model-weights', icon: AdjustmentsHorizontalIcon },
+  { name: 'Fine-Tuning', to: '/finetuning', icon: CpuChipIcon },
+  { name: 'Datasets', to: '/dataset-management', icon: CircleStackIcon },
 ]
 
 const Sidebar = () => {
@@ -69,13 +78,36 @@ const Sidebar = () => {
             <span className="text-sm font-medium">{item.name}</span>
           </NavLink>
         ))}
+
+        {/* ML & Data Section */}
+        <div className="pt-4 mt-4 border-t border-tactical-800">
+          <p className="px-4 pb-2 text-xs font-semibold text-tactical-500 uppercase tracking-wider">ML & Data</p>
+          {mlNavigation.map((item) => (
+            <NavLink
+              key={item.name}
+              to={item.to}
+              data-testid={`sidebar-nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors',
+                  isActive
+                    ? 'bg-tiger-orange text-white'
+                    : 'text-tactical-300 hover:bg-tactical-800 hover:text-white'
+                )
+              }
+            >
+              <item.icon className="h-5 w-5" />
+              <span className="text-sm font-medium">{item.name}</span>
+            </NavLink>
+          ))}
+        </div>
       </nav>
 
       {/* Footer */}
       <div className="p-4 border-t border-tactical-800">
         <div className="text-xs text-tactical-400 text-center">
-          <p data-testid="sidebar-version">Version 1.0.0</p>
-          <p className="mt-1">© 2024 Tiger ID</p>
+          <p data-testid="sidebar-version">Version 2.0.0</p>
+          <p className="mt-1">© 2026 Tiger ID</p>
         </div>
       </div>
     </aside>

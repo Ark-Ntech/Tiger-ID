@@ -206,7 +206,7 @@ def create_app() -> FastAPI:
     import os
     cors_origins = os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5173,http://localhost:5174,http://localhost:8001"
+        "http://localhost:5173,http://localhost:5174,http://localhost:5179,http://localhost:8001"
     ).split(",")
 
     app.add_middleware(
@@ -217,10 +217,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Rate limiting middleware (60 requests per minute per IP)
+    # Rate limiting middleware (300 requests per minute per IP)
     app.add_middleware(
         RateLimitMiddleware,
-        requests_per_minute=60,
+        requests_per_minute=300,
         per_ip=True
     )
     

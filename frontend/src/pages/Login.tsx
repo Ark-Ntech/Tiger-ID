@@ -54,8 +54,8 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-500 to-primary-700 px-4">
-      <div className="max-w-md w-full">
+    <div className="min-h-screen h-full flex items-center justify-center bg-gradient-to-br from-tiger-orange to-tiger-orange-dark px-4 py-8">
+      <div className="max-w-md w-full mx-auto">
         <div className="bg-white rounded-lg shadow-xl p-8">
           {/* Logo */}
           <div className="text-center mb-8">
@@ -132,7 +132,7 @@ const Login = () => {
 
         {/* Version */}
         <div className="mt-8 text-center text-white text-sm">
-          <p>Version 1.0.0</p>
+          <p>Version 2.0.0</p>
         </div>
       </div>
     </div>

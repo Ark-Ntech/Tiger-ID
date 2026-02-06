@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -90,11 +90,13 @@ const createTestStore = (notifications: any[] = []) => {
     preloadedState: {
       auth: {
         user: {
-          user_id: '123',
+          id: '123',
           username: 'testuser',
           email: 'test@example.com',
-          role: 'investigator',
-          is_active: true,
+          role: 'investigator' as const,
+          full_name: 'Test User',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
         },
         token: 'test-token',
         isAuthenticated: true,

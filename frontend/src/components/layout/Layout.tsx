@@ -8,6 +8,9 @@ import {
   ChartBarIcon,
   CheckBadgeIcon,
   SignalIcon,
+  AdjustmentsHorizontalIcon,
+  CpuChipIcon,
+  CircleStackIcon,
 } from '@heroicons/react/24/outline'
 import Sidebar from './Sidebar'
 import Header from './Header'
@@ -41,6 +44,9 @@ const navigation = [
   { name: 'Facilities', to: '/facilities', icon: BuildingOfficeIcon },
   { name: 'Verification', to: '/verification', icon: CheckBadgeIcon },
   { name: 'Discovery', to: '/discovery', icon: SignalIcon },
+  { name: 'Model Weights', to: '/model-weights', icon: AdjustmentsHorizontalIcon },
+  { name: 'Fine-Tuning', to: '/finetuning', icon: CpuChipIcon },
+  { name: 'Datasets', to: '/dataset-management', icon: CircleStackIcon },
 ]
 
 const Layout = () => {

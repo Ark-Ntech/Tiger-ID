@@ -445,10 +445,10 @@ async def get_tiger_image(
     from pathlib import Path
     from fastapi.responses import FileResponse
 
-    # Get image record
+    # Get image record (convert UUID to str for SQLite String(36) columns)
     image = db.query(TigerImage).filter(
-        TigerImage.image_id == image_id,
-        TigerImage.tiger_id == tiger_id
+        TigerImage.image_id == str(image_id),
+        TigerImage.tiger_id == str(tiger_id)
     ).first()
 
     if not image:

@@ -39,7 +39,7 @@ async def global_search(
         limit=limit,
         user_id=current_user.user_id
     )
-    
+
     return SuccessResponse(
         message=f"Found {results['total_results']} results",
         data=results

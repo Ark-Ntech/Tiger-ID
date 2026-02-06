@@ -6,12 +6,12 @@ app:
   secret_key: ${SECRET_KEY}
   
 database:
-  url: ${DATABASE_URL:-sqlite:///data/production.db}
+  url: ${DATABASE_URL:-sqlite:///data/tiger_id.db}
   pool_size: 10
   max_overflow: 20
   echo: ${DEBUG:-false}
   # SQLite configuration
-  sqlite_path: ${SQLITE_DB_PATH:-data/production.db}
+  sqlite_path: ${SQLITE_DB_PATH:-data/tiger_id.db}
   use_sqlite_demo: ${USE_SQLITE_DEMO:-false}
   use_postgresql: ${USE_POSTGRESQL:-false}
 

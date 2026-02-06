@@ -27,6 +27,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._lock = asyncio.Lock()
 
     async def dispatch(self, request: Request, call_next):
+        # Skip WebSocket upgrade requests -- BaseHTTPMiddleware cannot handle
+        # the WebSocket protocol upgrade and will break the connection.
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            return await call_next(request)
+
         # Get client identifier
         if self.per_ip:
             client_id = request.client.host if request.client else "unknown"

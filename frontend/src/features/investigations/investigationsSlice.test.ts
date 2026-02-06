@@ -24,11 +24,12 @@ describe('investigationsSlice', () => {
   describe('setSelectedInvestigation', () => {
     it('should set selected investigation', () => {
       const investigation: Investigation = {
-        investigation_id: '123',
+        id: '123',
         title: 'Test Investigation',
         description: 'A test investigation',
-        status: 'active',
+        status: 'in_progress',
         priority: 'high',
+        created_by: 'user-1',
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
       }
@@ -41,11 +42,12 @@ describe('investigationsSlice', () => {
     it('should clear selected investigation when set to null', () => {
       const previousState = {
         selectedInvestigation: {
-          investigation_id: '123',
+          id: '123',
           title: 'Test',
           description: 'Test',
-          status: 'active',
-          priority: 'high',
+          status: 'in_progress' as const,
+          priority: 'high' as const,
+          created_by: 'user-1',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
@@ -60,9 +62,9 @@ describe('investigationsSlice', () => {
 
   describe('setFilters', () => {
     it('should set status filter', () => {
-      const state = investigationsReducer(initialState, setFilters({ status: 'active' }))
+      const state = investigationsReducer(initialState, setFilters({ status: 'in_progress' }))
 
-      expect(state.filters.status).toBe('active')
+      expect(state.filters.status).toBe('in_progress')
     })
 
     it('should set priority filter', () => {
@@ -78,10 +80,10 @@ describe('investigationsSlice', () => {
     })
 
     it('should merge multiple filters', () => {
-      let state = investigationsReducer(initialState, setFilters({ status: 'active' }))
+      let state = investigationsReducer(initialState, setFilters({ status: 'in_progress' }))
       state = investigationsReducer(state, setFilters({ priority: 'high' }))
 
-      expect(state.filters.status).toBe('active')
+      expect(state.filters.status).toBe('in_progress')
       expect(state.filters.priority).toBe('high')
     })
 
@@ -104,7 +106,7 @@ describe('investigationsSlice', () => {
       const previousState = {
         selectedInvestigation: null,
         filters: {
-          status: 'active',
+          status: 'in_progress',
           priority: 'low',
         },
       }
@@ -121,7 +123,7 @@ describe('investigationsSlice', () => {
       const previousState = {
         selectedInvestigation: null,
         filters: {
-          status: 'active',
+          status: 'in_progress',
           priority: 'high',
           search: 'test',
         },
@@ -134,11 +136,12 @@ describe('investigationsSlice', () => {
 
     it('should preserve selected investigation when clearing filters', () => {
       const investigation: Investigation = {
-        investigation_id: '123',
+        id: '123',
         title: 'Test',
         description: 'Test',
-        status: 'active',
+        status: 'in_progress',
         priority: 'high',
+        created_by: 'user-1',
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
       }
@@ -146,7 +149,7 @@ describe('investigationsSlice', () => {
       const previousState = {
         selectedInvestigation: investigation,
         filters: {
-          status: 'active',
+          status: 'in_progress',
         },
       }
 
@@ -166,19 +169,20 @@ describe('investigationsSlice', () => {
   describe('combined actions', () => {
     it('should handle filter and selection together', () => {
       const investigation: Investigation = {
-        investigation_id: '456',
+        id: '456',
         title: 'Another Investigation',
         description: 'Description',
         status: 'completed',
         priority: 'medium',
+        created_by: 'user-1',
         created_at: '2024-01-02T00:00:00Z',
         updated_at: '2024-01-02T00:00:00Z',
       }
 
-      let state = investigationsReducer(initialState, setFilters({ status: 'active' }))
+      let state = investigationsReducer(initialState, setFilters({ status: 'in_progress' }))
       state = investigationsReducer(state, setSelectedInvestigation(investigation))
 
-      expect(state.filters.status).toBe('active')
+      expect(state.filters.status).toBe('in_progress')
       expect(state.selectedInvestigation).toEqual(investigation)
     })
   })

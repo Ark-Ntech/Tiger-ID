@@ -1,7 +1,12 @@
 """
 Fine-tuning API routes for model training.
 
-Allows users to fine-tune models with selected tiger images and training parameters.
+Allows users to fine-tune the 6-model ReID ensemble with selected tiger images
+and training parameters. Training runs on Modal GPUs using PyTorch with metric
+learning losses (triplet, contrastive, ArcFace, circle).
+
+Note: This uses PyTorch/timm for computer vision fine-tuning, NOT LLM fine-tuning
+libraries like Unsloth or LLaMA-Factory (which are for language models only).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -12,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.auth.auth import get_current_user
-from backend.services.finetuning_service import FineTuningService
+from backend.services.finetuning_service import FineTuningService, MODEL_REGISTRY, LossFunction
 from backend.utils.response_models import SuccessResponse
 from backend.utils.logging import get_logger
 
@@ -20,16 +25,33 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/finetuning", tags=["finetuning"])
 
+# Valid model names and loss functions derived from the service registry
+VALID_MODEL_NAMES = list(MODEL_REGISTRY.keys())
+VALID_LOSS_FUNCTIONS = [lf.value for lf in LossFunction]
+
 
 # Request models
 class FineTuningRequest(BaseModel):
-    model_name: str = Field(..., description="Model to fine-tune (tiger_reid, wildlife_tools, etc.)")
-    tiger_ids: List[str] = Field(..., description="List of tiger IDs to use for training")
+    model_name: str = Field(
+        ...,
+        description=(
+            "Model to fine-tune. One of: wildlife_tools, cvwc2019_reid, transreid, "
+            "megadescriptor_b, tiger_reid, rapid_reid"
+        ),
+    )
+    tiger_ids: List[str] = Field(
+        ...,
+        min_length=3,
+        description="List of tiger IDs to use for training (minimum 3 for metric learning)",
+    )
     epochs: int = Field(50, ge=1, le=1000, description="Number of training epochs")
     batch_size: int = Field(32, ge=1, le=128, description="Batch size for training")
     learning_rate: float = Field(0.001, ge=0.0001, le=0.1, description="Learning rate")
-    validation_split: float = Field(0.2, ge=0.1, le=0.5, description="Validation split ratio")
-    loss_function: str = Field("triplet", description="Loss function (triplet, contrastive, softmax)")
+    validation_split: float = Field(0.2, ge=0.1, le=0.5, description="Fraction held out for testing")
+    loss_function: str = Field(
+        "triplet",
+        description="Loss function: triplet, contrastive, softmax, arcface, or circle",
+    )
     description: Optional[str] = Field(None, description="Description of this fine-tuning run")
 
 
@@ -42,6 +64,7 @@ class FineTuningJobResponse(BaseModel):
     current_epoch: int
     loss: Optional[float] = None
     validation_loss: Optional[float] = None
+    best_validation_loss: Optional[float] = None
     created_at: str
     updated_at: str
 
@@ -189,21 +212,25 @@ async def get_available_tigers_for_training(
 ):
     """
     Get list of tigers available for training (with sufficient images).
+
+    Returns tigers that have at least `min_images` photos in the database,
+    making them suitable for inclusion in a fine-tuning training set.
     """
     try:
+        from sqlalchemy import func
         from backend.database.models import Tiger, TigerImage
-        
+
         # Get tigers with at least min_images
         tigers = db.query(Tiger).join(TigerImage).group_by(Tiger.tiger_id).having(
-            db.func.count(TigerImage.image_id) >= min_images
+            func.count(TigerImage.image_id) >= min_images
         ).all()
-        
+
         tiger_list = []
         for tiger in tigers:
             image_count = db.query(TigerImage).filter(
                 TigerImage.tiger_id == tiger.tiger_id
             ).count()
-            
+
             tiger_list.append({
                 "tiger_id": str(tiger.tiger_id),
                 "name": tiger.name,
@@ -211,10 +238,87 @@ async def get_available_tigers_for_training(
                 "image_count": image_count,
                 "status": tiger.status.value if hasattr(tiger.status, 'value') else str(tiger.status)
             })
-        
+
         return SuccessResponse(data=tiger_list)
-        
+
     except Exception as e:
         logger.error(f"Error getting available tigers: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/models")
+async def get_available_models(
+    model_name: Optional[str] = None,
+    current_user = Depends(get_current_user)
+):
+    """
+    Get information about models available for fine-tuning.
+
+    Returns architecture details, default hyperparameters, supported loss
+    functions, and GPU requirements for each of the 6 ensemble models.
+
+    Query params:
+        model_name: Optional. If provided, returns info for that model only.
+    """
+    try:
+        # Use a temporary service instance (no DB needed for model info)
+        from backend.services.finetuning_service import MODEL_REGISTRY, LossFunction, _get_loss_config
+
+        if model_name:
+            if model_name not in MODEL_REGISTRY:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown model: {model_name}. Valid: {VALID_MODEL_NAMES}"
+                )
+            config = MODEL_REGISTRY[model_name]
+            return SuccessResponse(data={
+                "model": model_name,
+                "config": {
+                    "description": config["description"],
+                    "architecture": config["architecture"],
+                    "backbone": config["backbone"],
+                    "embedding_dim": config["embedding_dim"],
+                    "input_size": list(config["input_size"]),
+                    "weight_in_ensemble": config["weight_in_ensemble"],
+                    "default_lr": config["default_lr"],
+                    "default_batch_size": config["default_batch_size"],
+                    "gpu_requirement": config["gpu_requirement"],
+                    "freeze_layers": config["freeze_layers"],
+                    "uses_timm": config["timm_model"],
+                },
+            })
+
+        # Return all models
+        models_info = {}
+        for name, config in MODEL_REGISTRY.items():
+            models_info[name] = {
+                "description": config["description"],
+                "architecture": config["architecture"],
+                "embedding_dim": config["embedding_dim"],
+                "input_size": list(config["input_size"]),
+                "weight_in_ensemble": config["weight_in_ensemble"],
+                "default_lr": config["default_lr"],
+                "default_batch_size": config["default_batch_size"],
+                "gpu_requirement": config["gpu_requirement"],
+            }
+
+        return SuccessResponse(data={
+            "models": models_info,
+            "supported_loss_functions": VALID_LOSS_FUNCTIONS,
+            "notes": {
+                "framework": "PyTorch with timm and torchvision",
+                "training_approach": (
+                    "Metric learning (triplet/contrastive/ArcFace/circle) for "
+                    "vision-based tiger re-identification. Uses PyTorch training "
+                    "loops, NOT LLM fine-tuning libraries."
+                ),
+                "compute": "Modal GPU (T4 or A100 depending on model)",
+            },
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting model info: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 

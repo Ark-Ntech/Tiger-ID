@@ -77,9 +77,19 @@
     @apply bg-tactical-400 dark:bg-tactical-500;
   }
 
-  /* Smooth scrolling */
+  /* Smooth scrolling and full height */
   html {
     scroll-behavior: smooth;
+    @apply h-full;
+  }
+
+  /* Full height for body and root */
+  body {
+    @apply h-full m-0;
+  }
+
+  #root {
+    @apply h-full;
   }
 
   /* Reduced motion preference */
