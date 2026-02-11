@@ -213,15 +213,12 @@ const Tigers = () => {
     return result
   }, [mappedTigers, filters])
 
-  // Debug logging
+  // Error logging
   useEffect(() => {
     if (error) {
       console.error('Error loading tigers:', error)
     }
-    if (data) {
-      console.log('Tigers data loaded:', data)
-    }
-  }, [error, data])
+  }, [error])
 
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: Partial<TigerFilterState>) => {
@@ -328,7 +325,6 @@ const Tigers = () => {
         }
 
         const result = await identifyTiger(formData).unwrap()
-        console.log('Identification result:', result)
 
         // Navigate to results or show notification
         const resultData = result?.data as { tiger_id?: string } | undefined
@@ -350,8 +346,7 @@ const Tigers = () => {
           formData.append('facility_id', uploadData.facilityId)
         }
 
-        const result = await identifyBatch(formData).unwrap()
-        console.log('Batch identification result:', result)
+        await identifyBatch(formData).unwrap()
         refetch()
       }
     } catch (error: any) {

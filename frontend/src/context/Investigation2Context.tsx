@@ -279,8 +279,6 @@ export const Investigation2Provider = ({ children }: Investigation2ProviderProps
   // WebSocket handler for real-time updates
   const handleWebSocketMessage = useCallback(
     (message: any) => {
-      console.log('WebSocket message received:', message)
-
       // Handle phase events
       if (message.event === 'phase_started') {
         updateProgressStep(message.data.phase, 'running', message.data)

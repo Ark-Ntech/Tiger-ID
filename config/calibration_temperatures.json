@@ -1,0 +1,409 @@
+{
+  "calibration_temperatures": {
+    "wildlife_tools": 0.95,
+    "cvwc2019": 1.0,
+    "rapid": 0.95,
+    "tiger_reid": 1.0,
+    "transreid": 1.0,
+    "megadescriptor_b": 0.95
+  },
+  "ensemble_weights": {
+    "wildlife_tools": 0.25,
+    "cvwc2019": 0.25,
+    "transreid": 0.25,
+    "megadescriptor_b": 0.25,
+    "tiger_reid": 0.0,
+    "rapid": 0.0
+  },
+  "best_ensemble_rank1": 0.995,
+  "per_model_results": {
+    "wildlife_tools": {
+      "best_temperature": 0.95,
+      "best_rank1": 0.9799247176913425,
+      "results_by_temp": {
+        "0.5": {
+          "rank1": 0.9686,
+          "rank5": 0.9925,
+          "rank10": 0.9975,
+          "mAP": 0.9566,
+          "num_queries": 797
+        },
+        "0.7": {
+          "rank1": 0.9787,
+          "rank5": 0.9925,
+          "rank10": 0.9975,
+          "mAP": 0.9619,
+          "num_queries": 797
+        },
+        "0.85": {
+          "rank1": 0.9774,
+          "rank5": 0.9925,
+          "rank10": 0.9975,
+          "mAP": 0.9625,
+          "num_queries": 797
+        },
+        "0.95": {
+          "rank1": 0.9799,
+          "rank5": 0.9937,
+          "rank10": 0.9987,
+          "mAP": 0.9631,
+          "num_queries": 797
+        },
+        "1.0": {
+          "rank1": 0.9799,
+          "rank5": 0.9937,
+          "rank10": 0.9987,
+          "mAP": 0.9631,
+          "num_queries": 797
+        },
+        "1.1": {
+          "rank1": 0.9799,
+          "rank5": 0.9937,
+          "rank10": 0.9987,
+          "mAP": 0.9631,
+          "num_queries": 797
+        },
+        "1.3": {
+          "rank1": 0.9799,
+          "rank5": 0.9937,
+          "rank10": 0.9987,
+          "mAP": 0.9631,
+          "num_queries": 797
+        },
+        "1.5": {
+          "rank1": 0.9799,
+          "rank5": 0.9937,
+          "rank10": 0.9987,
+          "mAP": 0.9631,
+          "num_queries": 797
+        }
+      }
+    },
+    "cvwc2019": {
+      "best_temperature": 1.0,
+      "best_rank1": 0.8983688833124216,
+      "results_by_temp": {
+        "0.5": {
+          "rank1": 0.01,
+          "rank5": 0.0414,
+          "rank10": 0.0841,
+          "mAP": 0.0213,
+          "num_queries": 797
+        },
+        "0.7": {
+          "rank1": 0.0364,
+          "rank5": 0.1217,
+          "rank10": 0.1757,
+          "mAP": 0.0346,
+          "num_queries": 797
+        },
+        "0.85": {
+          "rank1": 0.1957,
+          "rank5": 0.4078,
+          "rank10": 0.5232,
+          "mAP": 0.1566,
+          "num_queries": 797
+        },
+        "0.95": {
+          "rank1": 0.8908,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.5393,
+          "num_queries": 797
+        },
+        "1.0": {
+          "rank1": 0.8984,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.5401,
+          "num_queries": 797
+        },
+        "1.1": {
+          "rank1": 0.8984,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.5401,
+          "num_queries": 797
+        },
+        "1.3": {
+          "rank1": 0.8984,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.5401,
+          "num_queries": 797
+        },
+        "1.5": {
+          "rank1": 0.8984,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.5401,
+          "num_queries": 797
+        }
+      }
+    },
+    "rapid": {
+      "best_temperature": 0.95,
+      "best_rank1": 0.8920953575909661,
+      "results_by_temp": {
+        "0.5": {
+          "rank1": 0.01,
+          "rank5": 0.0439,
+          "rank10": 0.0841,
+          "mAP": 0.0211,
+          "num_queries": 797
+        },
+        "0.7": {
+          "rank1": 0.0477,
+          "rank5": 0.1455,
+          "rank10": 0.2359,
+          "mAP": 0.0389,
+          "num_queries": 797
+        },
+        "0.85": {
+          "rank1": 0.2886,
+          "rank5": 0.5408,
+          "rank10": 0.6763,
+          "mAP": 0.2409,
+          "num_queries": 797
+        },
+        "0.95": {
+          "rank1": 0.8921,
+          "rank5": 0.9674,
+          "rank10": 0.9812,
+          "mAP": 0.5604,
+          "num_queries": 797
+        },
+        "1.0": {
+          "rank1": 0.8908,
+          "rank5": 0.9674,
+          "rank10": 0.9812,
+          "mAP": 0.5605,
+          "num_queries": 797
+        },
+        "1.1": {
+          "rank1": 0.8908,
+          "rank5": 0.9674,
+          "rank10": 0.9812,
+          "mAP": 0.5605,
+          "num_queries": 797
+        },
+        "1.3": {
+          "rank1": 0.8908,
+          "rank5": 0.9674,
+          "rank10": 0.9812,
+          "mAP": 0.5605,
+          "num_queries": 797
+        },
+        "1.5": {
+          "rank1": 0.8908,
+          "rank5": 0.9674,
+          "rank10": 0.9812,
+          "mAP": 0.5605,
+          "num_queries": 797
+        }
+      }
+    },
+    "tiger_reid": {
+      "best_temperature": 1.0,
+      "best_rank1": 0.9259723964868256,
+      "results_by_temp": {
+        "0.5": {
+          "rank1": 0.01,
+          "rank5": 0.0427,
+          "rank10": 0.0816,
+          "mAP": 0.0211,
+          "num_queries": 797
+        },
+        "0.7": {
+          "rank1": 0.0138,
+          "rank5": 0.0828,
+          "rank10": 0.1267,
+          "mAP": 0.0253,
+          "num_queries": 797
+        },
+        "0.85": {
+          "rank1": 0.1142,
+          "rank5": 0.2472,
+          "rank10": 0.3388,
+          "mAP": 0.0995,
+          "num_queries": 797
+        },
+        "0.95": {
+          "rank1": 0.8695,
+          "rank5": 0.9787,
+          "rank10": 0.9887,
+          "mAP": 0.6205,
+          "num_queries": 797
+        },
+        "1.0": {
+          "rank1": 0.926,
+          "rank5": 0.9787,
+          "rank10": 0.9875,
+          "mAP": 0.6382,
+          "num_queries": 797
+        },
+        "1.1": {
+          "rank1": 0.926,
+          "rank5": 0.9787,
+          "rank10": 0.9875,
+          "mAP": 0.6382,
+          "num_queries": 797
+        },
+        "1.3": {
+          "rank1": 0.926,
+          "rank5": 0.9787,
+          "rank10": 0.9875,
+          "mAP": 0.6382,
+          "num_queries": 797
+        },
+        "1.5": {
+          "rank1": 0.926,
+          "rank5": 0.9787,
+          "rank10": 0.9875,
+          "mAP": 0.6382,
+          "num_queries": 797
+        }
+      }
+    },
+    "transreid": {
+      "best_temperature": 1.0,
+      "best_rank1": 0.9134253450439147,
+      "results_by_temp": {
+        "0.5": {
+          "rank1": 0.0263,
+          "rank5": 0.0765,
+          "rank10": 0.1242,
+          "mAP": 0.0325,
+          "num_queries": 797
+        },
+        "0.7": {
+          "rank1": 0.0703,
+          "rank5": 0.187,
+          "rank10": 0.2459,
+          "mAP": 0.0555,
+          "num_queries": 797
+        },
+        "0.85": {
+          "rank1": 0.2133,
+          "rank5": 0.3576,
+          "rank10": 0.4479,
+          "mAP": 0.164,
+          "num_queries": 797
+        },
+        "0.95": {
+          "rank1": 0.8833,
+          "rank5": 0.9611,
+          "rank10": 0.9724,
+          "mAP": 0.6073,
+          "num_queries": 797
+        },
+        "1.0": {
+          "rank1": 0.9134,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.6173,
+          "num_queries": 797
+        },
+        "1.1": {
+          "rank1": 0.9134,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.6173,
+          "num_queries": 797
+        },
+        "1.3": {
+          "rank1": 0.9134,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.6173,
+          "num_queries": 797
+        },
+        "1.5": {
+          "rank1": 0.9134,
+          "rank5": 0.9624,
+          "rank10": 0.9737,
+          "mAP": 0.6173,
+          "num_queries": 797
+        }
+      }
+    },
+    "megadescriptor_b": {
+      "best_temperature": 0.95,
+      "best_rank1": 0.9523212045169385,
+      "results_by_temp": {
+        "0.5": {
+          "rank1": 0.921,
+          "rank5": 0.9875,
+          "rank10": 0.995,
+          "mAP": 0.8992,
+          "num_queries": 797
+        },
+        "0.7": {
+          "rank1": 0.9498,
+          "rank5": 0.9887,
+          "rank10": 0.995,
+          "mAP": 0.9111,
+          "num_queries": 797
+        },
+        "0.85": {
+          "rank1": 0.9511,
+          "rank5": 0.9887,
+          "rank10": 0.995,
+          "mAP": 0.911,
+          "num_queries": 797
+        },
+        "0.95": {
+          "rank1": 0.9523,
+          "rank5": 0.9887,
+          "rank10": 0.995,
+          "mAP": 0.911,
+          "num_queries": 797
+        },
+        "1.0": {
+          "rank1": 0.9523,
+          "rank5": 0.9887,
+          "rank10": 0.995,
+          "mAP": 0.911,
+          "num_queries": 797
+        },
+        "1.1": {
+          "rank1": 0.9523,
+          "rank5": 0.9887,
+          "rank10": 0.995,
+          "mAP": 0.911,
+          "num_queries": 797
+        },
+        "1.3": {
+          "rank1": 0.9523,
+          "rank5": 0.9887,
+          "rank10": 0.995,
+          "mAP": 0.911,
+          "num_queries": 797
+        },
+        "1.5": {
+          "rank1": 0.9523,
+          "rank5": 0.9887,
+          "rank10": 0.995,
+          "mAP": 0.911,
+          "num_queries": 797
+        }
+      }
+    }
+  },
+  "metadata": {
+    "atrw_train_images": 1887,
+    "query_images": 797,
+    "gallery_images": 1090,
+    "temperature_grid": [
+      0.5,
+      0.7,
+      0.85,
+      0.95,
+      1.0,
+      1.1,
+      1.3,
+      1.5
+    ],
+    "timestamp": "2026-02-07 04:58:03"
+  }
+}

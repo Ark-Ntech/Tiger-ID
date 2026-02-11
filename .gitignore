@@ -119,3 +119,24 @@ nul
 
 # Test results
 results/
+
+# Claude local settings (contains session tokens)
+.claude/settings.local.json
+
+# Test screenshots and artifacts (root directory)
+/e2e-*.png
+/test-*.png
+/test_tiger_*.jpg
+/investigation-*.png
+/e2e-console-log.txt
+
+# Temporary investigation/test output
+/inv_result.json
+/*tmp_inv.json
+
+# Local E2E test scripts
+/e2e_test_investigation.py
+/test_ui_progress.py
+
+# Calibration cache (large numpy files, regenerate via scripts/calibrate_temperatures.py)
+data/calibration_cache/
